@@ -4,7 +4,8 @@ Example use of Snowflake related operators.
 import os
 from datetime import datetime
 
-from airflow.sdk import DAG, task
+from airflow import DAG
+from airflow.decorators import task
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 
 
