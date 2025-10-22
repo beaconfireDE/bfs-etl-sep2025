@@ -13,7 +13,7 @@ SNOWFLAKE_SCHEMA = 'DEV'
 
 SNOWFLAKE_ROLE = 'DE_0928'
 SNOWFLAKE_WAREHOUSE = 'DE_0928_WH'
-SNOWFLAKE_STAGE = 'Olivia_stage'
+SNOWFLAKE_STAGE = 'OLIVIA_STAGE'
 
 with DAG(
     dag_id="test_snowflake_conn",
