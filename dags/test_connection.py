@@ -34,7 +34,7 @@ with DAG(
     tags=["snowflake", "s3"],
 ) as dag:
 
-    # 🧩 Step 1: Create target table if not exists
+    # Step 1: Create target table if not exists
     create_table = SnowflakeOperator(
         task_id="create_table",
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
@@ -54,7 +54,7 @@ with DAG(
         """,
     )
 
-    # 🧩 Step 2: For each day, wait for S3 file → then copy into Snowflake
+    # Step 2: For each day, wait for S3 file → then copy into Snowflake
     for d in DATES:
         file_name = f"Filename_{GROUP}_{d}.csv"
         s3_key = f"{S3_PREFIX}/{file_name}"
@@ -89,7 +89,7 @@ with DAG(
 #     catchup=False,
 # ) as dag:
 
-#     # 🧩 1. Test AWS S3 Connection
+#     # 1. Test AWS S3 Connection
 #     @task()
 #     def test_s3_conn():
 #         hook = S3Hook(aws_conn_id=AWS_CONN_ID)
@@ -99,7 +99,7 @@ with DAG(
 #         else:
 #             raise ValueError("⚠️ S3 connected but no files found.")
     
-#     # 🧩 2. Test Snowflake Connection
+#     # 2. Test Snowflake Connection
 #     test_snowflake_conn = SnowflakeOperator(
 #         task_id="test_snowflake_conn",
 #         snowflake_conn_id=SNOWFLAKE_CONN_ID,
