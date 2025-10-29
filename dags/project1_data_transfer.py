@@ -1,7 +1,7 @@
-from datetime import datetime
 from airflow import DAG
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
-from airflow.operators.empty import EmptyOperator
+from datetime import datetime
+# from airflow.operators.empty import EmptyOperator
 
 SNOWFLAKE_CONN_ID = 'snowflake_conn'
 SNOWFLAKE_DATABASE = 'AIRFLOW0928'
@@ -16,7 +16,7 @@ TABLE_NAME = 'prestage_orders_team1'
 with DAG(
 	dag_id="project1_s3_data_transfer",
     start_date=datetime(2025, 10, 24),
-    end_date=datetime(2025, 10, 26),
+    # end_date=datetime(2025, 10, 26),
     # schedule='0 7 * * *',
     schedule = None, # Run on demand
     # default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
