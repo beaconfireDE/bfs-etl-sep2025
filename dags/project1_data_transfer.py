@@ -3,6 +3,7 @@ from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 from datetime import datetime
 from airflow.operators.empty import EmptyOperator
 
+# Adding configs
 SNOWFLAKE_CONN_ID = 'snowflake_conn'
 SNOWFLAKE_DATABASE = 'AIRFLOW0928'
 SNOWFLAKE_SCHEMA = 'DEV'
@@ -13,10 +14,10 @@ SNOWFLAKE_STAGE = 's3_stage_trans_order'
 SNOWFLAKE_FORMAT = 'assignment0928.as_prod.team1_prj1_format'
 TABLE_NAME = 'prestage_orders_team1'
 
+# Setting up DAG
 with DAG(
 	dag_id="project1_s3_data_transfer",
     start_date=datetime(2025, 10, 24),
-    # end_date=datetime(2025, 10, 26),
     # schedule='0 7 * * *',
     schedule = None, # Run on demand
     # default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
