@@ -14,7 +14,7 @@ with DAG(
 
     test_conn = SnowflakeOperator(
         task_id="test_connection",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        snowflake_conn_id="snowflake_conn",
         sql="""
         SELECT CURRENT_ACCOUNT() AS account,
                CURRENT_ROLE() AS role,
