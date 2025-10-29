@@ -10,7 +10,7 @@ SNOWFLAKE_SCHEMA = 'DEV'
 SNOWFLAKE_ROLE = 'DE_DEVELOPER_0928'
 SNOWFLAKE_WAREHOUSE = 'DE_0928_WH'
 SNOWFLAKE_STAGE = 's3_stage_trans_order'
-SNOWFLAKE_FORMAT = 'assignment0928.as_prod.team1_prj1_format'
+# SNOWFLAKE_FORMAT = 'assignment0928.as_prod.team1_prj1_format'
 TABLE_NAME = 'prestage_orders_team1'
 
 with DAG(
@@ -19,29 +19,29 @@ with DAG(
     end_date=datetime(2025, 10, 26),
     # schedule='0 7 * * *',
     schedule = None, # Run on demand
-    default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
+    # default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
     tags=['project1', 'snowflake', 'S3'],
-    catchup=True,
+    catchup=False,
 ) as dag:
 	
-	start = EmptyOperator(task_id="start")
+	# start = EmptyOperator(task_id="start")
 
-	setup_format = SnowflakeOperator(
-        task_id="snowflake_config_format",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
-        sql=f"""
-        create or replace file format {SNOWFLAKE_FORMAT}
-		  TYPE = CSV
-		  field_delimiter = ','
-		  FIELD_OPTIONALLY_ENCLOSED_BY = '"'
-		  SKIP_HEADER = 1
-		  NULL_IF = ('', 'NULL');
-		"""
-	)
+	# setup_format = SnowflakeOperator(
+    #     task_id="snowflake_config_format",
+    #     warehouse=SNOWFLAKE_WAREHOUSE,
+    #     database=SNOWFLAKE_DATABASE,
+    #     schema=SNOWFLAKE_SCHEMA,
+    #     role=SNOWFLAKE_ROLE,
+    #     snowflake_conn_id=SNOWFLAKE_CONN_ID,
+    #     sql=f"""
+    #     create or replace file format {SNOWFLAKE_FORMAT}
+	# 	  TYPE = CSV
+	# 	  field_delimiter = ','
+	# 	  FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+	# 	  SKIP_HEADER = 1
+	# 	  NULL_IF = ('', 'NULL');
+	# 	"""
+	# )
 
 	setup_table = SnowflakeOperator(
         task_id="snowflake_config_table",
@@ -49,7 +49,7 @@ with DAG(
         database=SNOWFLAKE_DATABASE,
         schema=SNOWFLAKE_SCHEMA,
         role=SNOWFLAKE_ROLE,
-        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         create or replace table {TABLE_NAME} (
 		  order_id        NUMBER,
@@ -72,13 +72,19 @@ with DAG(
         database=SNOWFLAKE_DATABASE,
         schema=SNOWFLAKE_SCHEMA,
         role=SNOWFLAKE_ROLE,
-        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         COPY INTO {TABLE_NAME}
 		FROM @{SNOWFLAKE_STAGE}
 		PATTERN = '.*team1_.*\.csv'
-		FILE_FORMAT = {SNOWFLAKE_FORMAT}
-		ON_ERROR = 'CONTINUE';
+		FILE_FORMAT = 
+		(TYPE = CSV
+		  field_delimiter = ','
+		  FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+		  SKIP_HEADER = 1
+		  NULL_IF = ('', 'NULL'))
+		ON_ERROR = 'CONTINUE'
+		;
 		"""
 	)
 
@@ -88,14 +94,13 @@ with DAG(
         database=SNOWFLAKE_DATABASE,
         schema=SNOWFLAKE_SCHEMA,
         role=SNOWFLAKE_ROLE,
-        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
 		select count(*) as total_rows
-		from {TABLE_NAME}
+		from {TABLE_NAME};
 		"""
 	)
 
-	start >> [setup_format, setup_table]
-	setup_format >> copy_table
-	setup_table >> copy_table
-	copy_table >> result_check
+	# start >> [setup_format, setup_table]
+	# setup_format >> copy_table
+	setup_table >> copy_table >> result_check
