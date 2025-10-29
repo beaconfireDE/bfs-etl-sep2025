@@ -19,7 +19,7 @@ with DAG(
     end_date=datetime(2025, 10, 26),
     # schedule='0 7 * * *',
     schedule = None, # Run on demand
-    # default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
+    default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
     tags=['project1', 'snowflake', 'S3'],
     catchup=True,
 ) as dag:
@@ -28,14 +28,13 @@ with DAG(
 
 	setup_format = SnowflakeOperator(
         task_id="snowflake_config_format",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        use warehouse {SNOWFLAKE_WAREHOUSE};
-
-		use database {SNOWFLAKE_DATABASE};
-		use schema {SNOWFLAKE_SCHEMA};
-
-		create or replace file format {SNOWFLAKE_FORMAT}
+        create or replace file format {SNOWFLAKE_FORMAT}
 		  TYPE = CSV
 		  field_delimiter = ','
 		  FIELD_OPTIONALLY_ENCLOSED_BY = '"'
@@ -46,14 +45,13 @@ with DAG(
 
 	setup_table = SnowflakeOperator(
         task_id="snowflake_config_table",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        use warehouse {SNOWFLAKE_WAREHOUSE};
-
-		use database {SNOWFLAKE_DATABASE};
-		use schema {SNOWFLAKE_SCHEMA};
-
-		create or replace table {TABLE_NAME} (
+        create or replace table {TABLE_NAME} (
 		  order_id        NUMBER,
 		  customer_id     NUMBER,
 		  order_date      DATE,
@@ -70,14 +68,13 @@ with DAG(
 
 	copy_table = SnowflakeOperator(
         task_id="snowflake_data_transfer",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        use warehouse {SNOWFLAKE_WAREHOUSE};
-
-		use database {SNOWFLAKE_DATABASE};
-		use schema {SNOWFLAKE_SCHEMA};
-
-		COPY INTO {TABLE_NAME}
+        COPY INTO {TABLE_NAME}
 		FROM @{SNOWFLAKE_STAGE}
 		PATTERN = '.*team1_.*\.csv'
 		FILE_FORMAT = {SNOWFLAKE_FORMAT}
@@ -87,13 +84,12 @@ with DAG(
 
 	result_check = SnowflakeOperator(
         task_id="result_checking",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        # snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        use warehouse {SNOWFLAKE_WAREHOUSE};
-
-		use database {SNOWFLAKE_DATABASE};
-		use schema {SNOWFLAKE_SCHEMA};
-
 		select count(*) as total_rows
 		from {TABLE_NAME}
 		"""
