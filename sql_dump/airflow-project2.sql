@@ -137,3 +137,37 @@ constraint fk_dim_symbol_company
     foreign key (company_id) references dim_company_team1 (company_id)
 );
 
+insert into dim_symbol_team1
+select s.symbol, s.exchange, s.name,
+    c.company_id, com.beta, com.volavg, com.mktcap, 
+    com.lastdiv, com.range, com.price, com.dcf, com.dcfdiff
+from identifier($t_stock) s
+join identifier($t_prof) com
+on s.symbol = com.symbol
+join dim_company_team1 c
+on coalesce(com.companyname, 'unnamed company') = c.companyname;
+
+
+
+--------- Fact table: Daily Stock Prices
+create or replace table fact_daily_price_team1 (
+price_key number(38, 0) identity,
+symbol varchar(16) not null,
+datekey number(8, 0) not null,
+open number(18,8),
+high number(18,8),
+low number(18,8),
+close number(18,8),
+adjclose number(18,8),
+volume number(38,8),
+
+constraint fk_daily_date foreign key (datekey) references dim_date_team1 (datekey),
+
+constraint fk_daily_symbol foreign key (symbol) references dim_symbol_team1 (symbol)
+);
+
+insert into fact_daily_price_team1 (symbol, datekey, open, high, low, close, adjclose, volume)
+select h.symbol, d.datekey, h.open, h.high, h.low, h.close, h.adjclose, h.volume
+from identifier($t_hist) h
+join dim_date_team1 d
+on h.date = d.date;
