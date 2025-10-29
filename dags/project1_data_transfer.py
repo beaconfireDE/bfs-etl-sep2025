@@ -28,7 +28,7 @@ with DAG(
 
 	setup_format = SnowflakeOperator(
         task_id="snowflake_config_format",
-        snowflake_conn_id={SNOWFLAKE_CONN_ID},
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         use warehouse {SNOWFLAKE_WAREHOUSE};
 
@@ -46,7 +46,7 @@ with DAG(
 
 	setup_table = SnowflakeOperator(
         task_id="snowflake_config_table",
-        snowflake_conn_id={SNOWFLAKE_CONN_ID},
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         use warehouse {SNOWFLAKE_WAREHOUSE};
 
@@ -70,7 +70,7 @@ with DAG(
 
 	copy_table = SnowflakeOperator(
         task_id="snowflake_data_transfer",
-        snowflake_conn_id={SNOWFLAKE_CONN_ID},
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         use warehouse {SNOWFLAKE_WAREHOUSE};
 
@@ -87,7 +87,7 @@ with DAG(
 
 	result_check = SnowflakeOperator(
         task_id="result_checking",
-        snowflake_conn_id={SNOWFLAKE_CONN_ID},
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         use warehouse {SNOWFLAKE_WAREHOUSE};
 
