@@ -56,6 +56,4 @@ with DAG(
         """,
     )
 
-    # ============= 设置任务依赖（顺序或并行） =============
-    # 三个 clone 任务之间没有依赖，可以并行执行
-    [clone_stock_history, clone_company_profile, clone_symbols]
+
