@@ -8,32 +8,29 @@ SNOWFLAKE_CONN_ID = "snowflake_conn"
 DB = "AIRFLOW0928"
 SCHEMA = "DEV"
 
-
-
-# DAG 基础参数配置
-
-default_args = {
-    "owner": "team2",                   # DAG 归属的tag
-    "depends_on_past": False,          
-    "email_on_failure": False,          
-    "retries": 1,                       # 失败时最多重试 1 次
+DEFAULT_ARGS = {"owner": "team2",
+   "depends_on_past": False,   
+     "retries": 1,                # 失败时最多重试 1 次
     "retry_delay": timedelta(minutes=3) # 每次重试间隔 3 分钟
-}
+   
+   }
 
-# ============================================
-# 主体 DAG 定义
-# ============================================
+
 with DAG(
-    dag_id="example_clone_only",                      # DAG ID
-    description="Clone source tables into COPY layer daily",  
-    default_args=default_args,
-    schedule_interval="@daily",                       # 每天
-    start_date=datetime(2025, 10, 29),                # 开始日期
-    catchup=False,                                    
-    tags=["clone", "snowflake", "team2"],             
+    dag_id="team2_stock_validate",
+    default_args=DEFAULT_ARGS,
+    start_date=datetime(2025, 10, 29),
+    schedule="0 6 * * *",  # 每天 06:00 America/Chicago
+    catchup=False,
+    tags=["stock", "etl", "team2", "unified"],
 ) as dag:
-    
 
+    # 统一切库&架构（必要）
+    use_db_schema = SnowflakeOperator(
+        task_id="use_db_schema",
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        sql=f"USE DATABASE {DB}; USE SCHEMA {SCHEMA};",
+    )
 
     #clone STOCK_HISTORY 
     clone_stock_history = SnowflakeOperator(
@@ -65,13 +62,6 @@ with DAG(
         """,
     )
 
-
-    # 统一切库&架构（必要）
-    use_db_schema = SnowflakeOperator(
-        task_id="use_db_schema",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
-        sql=f"USE DATABASE {DB}; USE SCHEMA {SCHEMA};",
-    )
 
     # 1) DIM_SYMBOL：Type-1 覆盖（既适合全量也适合增量）
     upsert_dim_symbol = SnowflakeOperator(
@@ -405,4 +395,4 @@ validate_data = PythonOperator(
 
 
 # DAG 执行顺序
-[clone_stock_history,clone_company_profile,clone_symbols] >> use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
+use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
