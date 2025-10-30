@@ -203,45 +203,74 @@ VALUES
     )
 
     # Step 5: 数据验证任务 —— 检查维度表、事实表行数和日期范围
-
-def validate_stock_data():
+def validate_all_tables():
     hook = SnowflakeHook(snowflake_conn_id="snowflake_conn")
     conn = hook.get_conn()
     cur = conn.cursor()
 
-    sql = f"""
-    SELECT
-      (SELECT COUNT(*) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2) AS copy_total_rows,
-      (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2) AS copy_distinct_rows,
-      (SELECT COUNT(*) FROM AIRFLOW0928.DEV.FACT_STOCK_DAILY_TEAM2) AS fact_rows,
-      (SELECT COUNT(*) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2)
-        - (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2) AS duplicate_rows,
-      CASE
-        WHEN (SELECT COUNT(*) FROM AIRFLOW0928.DEV.FACT_STOCK_DAILY_TEAM2) =
-             (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2)
-        THEN '✅ FACT 行数与 COPY 去重后行数一致'
-        ELSE '⚠️ 行数不一致，请检查重复或过滤逻辑'
-      END AS validation_result;
-    """
+    print("\n==============================")
+    print("数据验证报告：")
+    print("==============================\n")
 
-    cur.execute(sql)
-    result = cur.fetchone()
-    print("\n======================")
-    print("数据验证结果：")
-    print(f"COPY 总行数:        {result[0]}")
-    print(f"COPY 去重行数:      {result[1]}")
-    print(f"FACT 行数:          {result[2]}")
-    print(f"重复行数:            {result[3]}")
-    print(f"验证结果:            {result[4]}")
-    print("======================\n")
+    # 1️⃣ DIM_SYMBOL
+    cur.execute("""
+        SELECT 
+          (SELECT COUNT(*) FROM AIRFLOW0928.DEV.COPY_SYMBOLS_TEAM2),
+          (SELECT COUNT(DISTINCT SYMBOL) FROM AIRFLOW0928.DEV.COPY_SYMBOLS_TEAM2),
+          (SELECT COUNT(*) FROM AIRFLOW0928.DEV.DIM_SYMBOL_TEAM2)
+    """)
+    copy_total, copy_distinct, dim_rows = cur.fetchone()
+    result_symbol = "一致" if copy_distinct == dim_rows else "不一致"
+    print(f"[DIM_SYMBOL]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, DIM行数: {dim_rows} → {result_symbol}\n")
+
+    # 2️⃣ DIM_COMPANY
+    cur.execute("""
+        SELECT 
+          (SELECT COUNT(*) FROM AIRFLOW0928.DEV.COPY_COMPANY_PROFILE_TEAM2),
+          (SELECT COUNT(DISTINCT SYMBOL) FROM AIRFLOW0928.DEV.COPY_COMPANY_PROFILE_TEAM2),
+          (SELECT COUNT(*) FROM AIRFLOW0928.DEV.DIM_COMPANY_TEAM2)
+    """)
+    copy_total, copy_distinct, dim_rows = cur.fetchone()
+    result_company = "一致" if copy_distinct == dim_rows else "不一致"
+    print(f"[DIM_COMPANY]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, DIM行数: {dim_rows} → {result_company}\n")
+
+    # 3️⃣ DIM_DATE
+    cur.execute("""
+        SELECT 
+          (SELECT COUNT(DISTINCT DATE) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2),
+          (SELECT COUNT(*) FROM AIRFLOW0928.DEV.DIM_DATE_TEAM2),
+          (SELECT MAX(DATE) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2),
+          (SELECT MAX(FULL_DATE) FROM AIRFLOW0928.DEV.DIM_DATE_TEAM2)
+    """)
+    copy_dates, dim_dates, copy_max, dim_max = cur.fetchone()
+    result_date = "日期覆盖完整" if dim_dates >= copy_dates else "日期缺失"
+    print(f"[DIM_DATE]\nCOPY唯一日期: {copy_dates}, DIM日期行数: {dim_dates}\n最大日期: COPY={copy_max}, DIM={dim_max} → {result_date}\n")
+
+    # 4️⃣ FACT_STOCK_DAILY
+    cur.execute("""
+        SELECT
+          (SELECT COUNT(*) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2),
+          (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2),
+          (SELECT COUNT(*) FROM AIRFLOW0928.DEV.FACT_STOCK_DAILY_TEAM2)
+    """)
+    copy_total, copy_distinct, fact_rows = cur.fetchone()
+    duplicate_rows = copy_total - copy_distinct
+    result_fact = "一致" if fact_rows == copy_distinct else "不一致"
+    print(f"[FACT_STOCK_DAILY]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, FACT行数: {fact_rows}, 重复行: {duplicate_rows} → {result_fact}\n")
+
+    print("==============================")
+    print("🏁 验证完成！")
+    print("==============================\n")
 
     cur.close()
     conn.close()
 
+
 validate_data = PythonOperator(
     task_id="validate_data",
-    python_callable=validate_stock_data,
+    python_callable=validate_all_tables,
 )
+
 
 
 
