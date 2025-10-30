@@ -138,68 +138,65 @@ ORDER BY d;
         task_id="upsert_fact",
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        -- 取 FACT 的状态，用于自动判定首跑或增量
-        WITH fact_stat AS (
-          SELECT COUNT(*) AS cnt,
-                 TO_DATE(TO_CHAR(MAX(DATE_ID)), 'YYYYMMDD') AS fact_max_d
-          FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
-        ),
-        src_rng AS (
-          SELECT MIN(DATE) AS src_min_d, MAX(DATE) AS src_max_d
-          FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2
-        ),
+-- Step 1: Create a temporary staging table
+CREATE OR REPLACE TEMP TABLE TMP_SRC_NEW_TEAM2 AS
+WITH fact_stat AS (
+  SELECT COUNT(*) AS cnt,
+         TO_DATE(TO_CHAR(MAX(DATE_ID)), 'YYYYMMDD') AS fact_max_d
+  FROM AIRFLOW0928.DEV.FACT_STOCK_DAILY_TEAM2
+),
+src_rng AS (
+  SELECT MIN(DATE) AS src_min_d, MAX(DATE) AS src_max_d
+  FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2
+),
+run_span AS (
+  SELECT
+    CASE
+      WHEN (SELECT cnt FROM fact_stat) = 0
+        THEN (SELECT src_min_d FROM src_rng)
+      ELSE DATEADD(DAY, -7, (SELECT fact_max_d FROM fact_stat))
+    END AS start_d,
+    (SELECT src_max_d FROM src_rng) AS end_d
+),
+latest_profile AS (
+  SELECT *
+  FROM AIRFLOW0928.DEV.COPY_COMPANY_PROFILE_TEAM2
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY SYMBOL ORDER BY ID DESC) = 1
+)
+SELECT
+  ds.SYMBOL_ID,
+  TO_NUMBER(TO_CHAR(sh.DATE,'YYYYMMDD')) AS DATE_ID,
+  sh.OPEN, sh.HIGH, sh.LOW, sh.CLOSE, sh.ADJCLOSE, sh.VOLUME,
+  lp.PRICE, lp.BETA, lp.VOLAVG, lp.MKTCAP, lp.DCF, lp.DCFDIFF, lp.CHANGES
+FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2 sh
+JOIN run_span r 
+  ON sh.DATE BETWEEN r.start_d AND r.end_d
+JOIN AIRFLOW0928.DEV.DIM_SYMBOL_TEAM2 ds
+  ON ds.SYMBOL = sh.SYMBOL
+JOIN AIRFLOW0928.DEV.DIM_DATE_TEAM2 dd
+  ON dd.FULL_DATE = sh.DATE
+LEFT JOIN latest_profile lp
+  ON lp.SYMBOL = sh.SYMBOL
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY ds.SYMBOL_ID, TO_NUMBER(TO_CHAR(sh.DATE,'YYYYMMDD'))
+  ORDER BY sh.DATE DESC
+) = 1;
 
-        -- 计算本次需要处理的日期范围：
-        --   首跑：从源最小日期开始
-        --   日常：从 FACT 最大日期 - 7 天（带回补）开始
-        run_span AS (
-          SELECT
-            CASE
-              WHEN (SELECT cnt FROM fact_stat) = 0
-                THEN (SELECT src_min_d FROM src_rng)
-              ELSE DATEADD(DAY, -7, (SELECT fact_max_d FROM fact_stat))
-            END AS start_d,
-            (SELECT src_max_d FROM src_rng) AS end_d
-        ),
-        latest_profile AS (
-          SELECT *
-          FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2
-          QUALIFY ROW_NUMBER() OVER (PARTITION BY SYMBOL ORDER BY ID DESC) = 1
-        ), 
-        src_new AS (
-          SELECT
-            ds.SYMBOL_ID,
-            TO_NUMBER(TO_CHAR(sh.DATE,'YYYYMMDD')) AS DATE_ID,
-            sh.OPEN, sh.HIGH, sh.LOW, sh.CLOSE, sh.ADJCLOSE, sh.VOLUME,
-            lp.PRICE, lp.BETA, lp.VOLAVG, lp.MKTCAP, lp.DCF, lp.DCFDIFF, lp.CHANGES
-          FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2 sh
-          JOIN run_span r 
-            ON sh.DATE BETWEEN r.start_d AND r.end_d
-          JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 ds
-            ON ds.SYMBOL = sh.SYMBOL
-          JOIN {DB}.{SCHEMA}.DIM_DATE_TEAM2 dd
-            ON dd.FULL_DATE = sh.DATE
-          LEFT JOIN latest_profile lp
-            ON lp.SYMBOL = sh.SYMBOL
-          QUALIFY ROW_NUMBER() OVER (
-            PARTITION BY ds.SYMBOL_ID, TO_NUMBER(TO_CHAR(sh.DATE,'YYYYMMDD'))
-            ORDER BY sh.DATE DESC
-          ) = 1
-        )
-        MERGE INTO {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 tgt
-        USING src_new src
-        ON tgt.SYMBOL_ID = src.SYMBOL_ID AND tgt.DATE_ID = src.DATE_ID
-        WHEN MATCHED THEN UPDATE SET
-          OPEN=src.OPEN, HIGH=src.HIGH, LOW=src.LOW, CLOSE=src.CLOSE, ADJCLOSE=src.ADJCLOSE, VOLUME=src.VOLUME,
-          PRICE=src.PRICE, BETA=src.BETA, VOLAVG=src.VOLAVG, MKTCAP=src.MKTCAP,
-          DCF=src.DCF, DCFDIFF=src.DCFDIFF, CHANGES=src.CHANGES
+-- Step 2: Merge into Fact table
+MERGE INTO AIRFLOW0928.DEV.FACT_STOCK_DAILY_TEAM2 tgt
+USING TMP_SRC_NEW_TEAM2 src
+ON tgt.SYMBOL_ID = src.SYMBOL_ID AND tgt.DATE_ID = src.DATE_ID
+WHEN MATCHED THEN UPDATE SET
+  OPEN=src.OPEN, HIGH=src.HIGH, LOW=src.LOW, CLOSE=src.CLOSE,
+  ADJCLOSE=src.ADJCLOSE, VOLUME=src.VOLUME,
+  PRICE=src.PRICE, BETA=src.BETA, VOLAVG=src.VOLAVG, MKTCAP=src.MKTCAP,
+  DCF=src.DCF, DCFDIFF=src.DCFDIFF, CHANGES=src.CHANGES
+WHEN NOT MATCHED THEN INSERT
+  (SYMBOL_ID, DATE_ID, OPEN, HIGH, LOW, CLOSE, ADJCLOSE, VOLUME, PRICE, BETA, VOLAVG, MKTCAP, DCF, DCFDIFF, CHANGES)
+VALUES
+  (src.SYMBOL_ID, src.DATE_ID, src.OPEN, src.HIGH, src.LOW, src.CLOSE, src.ADJCLOSE, src.VOLUME,
+   src.PRICE, src.BETA, src.VOLAVG, src.MKTCAP, src.DCF, src.DCFDIFF, src.CHANGES);
 
-
-        WHEN NOT MATCHED THEN INSERT
-          (SYMBOL_ID, DATE_ID, OPEN, HIGH, LOW, CLOSE, ADJCLOSE, VOLUME, PRICE, BETA, VOLAVG, MKTCAP, DCF, DCFDIFF, CHANGES)
-        VALUES
-          (src.SYMBOL_ID, src.DATE_ID, src.OPEN, src.HIGH, src.LOW, src.CLOSE, src.ADJCLOSE, src.VOLUME,
-           src.PRICE, src.BETA, src.VOLAVG, src.MKTCAP, src.DCF, src.DCFDIFF, src.CHANGES);
         """,
     )
 
