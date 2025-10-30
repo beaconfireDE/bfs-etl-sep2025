@@ -134,10 +134,22 @@ with DAG(
         sql=load_sql("update_fact_market_daily .sql"),
     )
 
+    # ------------------------- VALIDATION TASK ----------------------------------
+    validate_data_integrity = SnowflakeOperator(
+        task_id="validate_data_integrity",
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        sql=load_sql("validate_data_integrity.sql"),
+    )
+
     # ------------------------- TASK DEPENDENCIES -----------------------------
     (
         [create_dim_company, create_dim_date, create_dim_symbol]
         >> create_fact_market_daily
         >> [update_dim_company, update_dim_date, update_dim_symbol]
         >> update_fact_market_daily
+        >> validate_data_integrity
     )
