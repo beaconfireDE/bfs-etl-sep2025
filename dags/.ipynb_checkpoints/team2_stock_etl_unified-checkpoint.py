@@ -95,7 +95,7 @@ with DAG(
         task_id="extend_dim_date",
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        INSERT INTO AIRFLOW0928.DEV.DIM_DATE_TEAM2 (DATE_ID, FULL_DATE, DAY, MONTH, QUARTER, YEAR, DAY_OF_WEEK)
+INSERT INTO AIRFLOW0928.DEV.DIM_DATE_TEAM2 (DATE_ID, FULL_DATE, DAY, MONTH, QUARTER, YEAR, DAY_OF_WEEK)
 WITH src_rng AS (
   SELECT MIN(DATE) AS dmin, MAX(DATE) AS dmax
   FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2
@@ -112,24 +112,24 @@ base AS (
       ELSE DATEADD(DAY, 1, (SELECT dmax_dim FROM dim_stat))
     END AS start_d,
     (SELECT dmax FROM src_rng) AS end_d
-),
-span AS (
-  SELECT CASE WHEN start_d IS NULL OR start_d > end_d THEN NULL ELSE start_d END AS start_d,
-         end_d
-  FROM base
-),
-calendar AS (
-  SELECT DATEADD(DAY, SEQ4(), start_d) AS d
-  FROM span, TABLE(GENERATOR(ROWCOUNT => IFF(start_d IS NULL, 0, DATEDIFF('DAY', start_d, end_d) + 1)))
+)
+, recursive_dates AS (
+    SELECT start_d AS d
+    FROM base
+    UNION ALL
+    SELECT DATEADD(DAY, 1, d)
+    FROM recursive_dates, base
+    WHERE d < base.end_d
 )
 SELECT
   TO_NUMBER(TO_CHAR(d,'YYYYMMDD')),
   d, DAY(d), MONTH(d), QUARTER(d), YEAR(d), TO_CHAR(d,'DY')
-FROM calendar c
+FROM recursive_dates r
 LEFT JOIN AIRFLOW0928.DEV.DIM_DATE_TEAM2 dd
-  ON dd.FULL_DATE = c.d
+  ON dd.FULL_DATE = r.d
 WHERE dd.FULL_DATE IS NULL
 ORDER BY d;
+
         """,
     )
 
