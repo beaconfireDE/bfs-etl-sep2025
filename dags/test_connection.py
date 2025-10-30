@@ -16,12 +16,7 @@ with DAG(
         task_id="check_snowflake_context",
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql="""
-        SELECT CURRENT_ACCOUNT() AS account,
-               CURRENT_USER() AS user_name,
-               CURRENT_ROLE() AS role,
-               CURRENT_REGION() AS region,
-               CURRENT_DATABASE() AS database_name,
-               CURRENT_SCHEMA() AS schema_name;
+        SELECT 'Connected.';
         """,
     )
 
