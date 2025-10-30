@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 
-SNOWFLAKE_CONN_ID = "snowflake_default"
+SNOWFLAKE_CONN_ID = "snowflake_conn"
 DB = "AIRFLOW0928"
 SCHEMA = "DEV"
 
@@ -45,12 +45,14 @@ with DAG(
         WHEN MATCHED THEN UPDATE SET
           NAME = src.NAME,
           EXCHANGE = src.EXCHANGE
+
+
         WHEN NOT MATCHED THEN INSERT (SYMBOL, NAME, EXCHANGE)
         VALUES (src.SYMBOL, src.NAME, src.EXCHANGE);
         """,
     )
 
-    # 2) DIM_COMPANY：Type-1 覆盖（以 COMPANY_PROFILE 最新记录为准）
+    # 2) DIM_COMPANY：Type-1 覆盖（以 COPY_COMPANY_PROFILE_TEAM2 最新记录为准）
     upsert_dim_company = SnowflakeOperator(
         task_id="upsert_dim_company",
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
@@ -78,6 +80,7 @@ with DAG(
           CEO          = src.CEO,
           WEBSITE      = src.WEBSITE,
           DESCRIPTION  = src.DESCRIPTION
+
         WHEN NOT MATCHED THEN INSERT
           (SYMBOL_ID, COMPANY_NAME, INDUSTRY, SECTOR, CEO, WEBSITE, DESCRIPTION)
         VALUES
@@ -190,6 +193,8 @@ with DAG(
           OPEN=src.OPEN, HIGH=src.HIGH, LOW=src.LOW, CLOSE=src.CLOSE, ADJCLOSE=src.ADJCLOSE, VOLUME=src.VOLUME,
           PRICE=src.PRICE, BETA=src.BETA, VOLAVG=src.VOLAVG, MKTCAP=src.MKTCAP,
           DCF=src.DCF, DCFDIFF=src.DCFDIFF, CHANGES=src.CHANGES
+
+
         WHEN NOT MATCHED THEN INSERT
           (SYMBOL_ID, DATE_ID, OPEN, HIGH, LOW, CLOSE, ADJCLOSE, VOLUME, PRICE, BETA, VOLAVG, MKTCAP, DCF, DCFDIFF, CHANGES)
         VALUES
