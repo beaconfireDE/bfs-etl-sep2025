@@ -204,7 +204,6 @@ VALUES
 
 
 
-# 数据验证
 
 # Step 5: 数据验证任务 —— 检查维度表、事实表行数和日期范围
 def validate_integrity():
@@ -228,7 +227,7 @@ def validate_integrity():
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2)
     """)
     copy_total, copy_distinct, dim_rows = cur.fetchone()
-    result_symbol = "一致" if copy_distinct == dim_rows else "不一致"
+    result_symbol = "✅一致" if copy_distinct == dim_rows else "⚠️不一致"
     print(f"[DIM_SYMBOL]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, DIM行数: {dim_rows} → {result_symbol}\n")
 
     # 2️⃣ DIM_COMPANY
@@ -239,7 +238,7 @@ def validate_integrity():
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2)
     """)
     copy_total, copy_distinct, dim_rows = cur.fetchone()
-    result_company = "一致" if copy_distinct == dim_rows else "不一致"
+    result_company = "✅一致" if copy_distinct == dim_rows else "⚠️不一致"
     print(f"[DIM_COMPANY]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, DIM行数: {dim_rows} → {result_company}\n")
 
     # 3️⃣ DIM_DATE
@@ -251,7 +250,7 @@ def validate_integrity():
           (SELECT MAX(FULL_DATE) FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2)
     """)
     copy_dates, dim_dates, copy_max, dim_max = cur.fetchone()
-    result_date = "日期覆盖完整" if dim_dates >= copy_dates else "日期缺失"
+    result_date = "✅日期覆盖完整" if dim_dates >= copy_dates else "⚠️日期缺失"
     print(f"[DIM_DATE]\nCOPY唯一日期: {copy_dates}, DIM日期行数: {dim_dates}\n最大日期: COPY={copy_max}, DIM={dim_max} → {result_date}\n")
 
     # 4️⃣ FACT_STOCK_DAILY
@@ -263,7 +262,7 @@ def validate_integrity():
     """)
     copy_total, copy_distinct, fact_rows = cur.fetchone()
     duplicate_rows = copy_total - copy_distinct
-    result_fact = "一致" if fact_rows == copy_distinct else "不一致"
+    result_fact = "✅一致" if fact_rows == copy_distinct else "⚠️不一致"
     print(f"[FACT_STOCK_DAILY]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, FACT行数: {fact_rows}, 重复行: {duplicate_rows} → {result_fact}\n")
 
     print("\n========== DATA INTEGRITY REPORT ==========\n")
