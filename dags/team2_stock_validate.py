@@ -217,4 +217,4 @@ validate_data = SnowflakeOperator(
 )
 
 
-    use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
+use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
