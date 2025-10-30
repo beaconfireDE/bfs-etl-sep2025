@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 from airflow.operators.python import PythonOperator
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
 SNOWFLAKE_CONN_ID = "snowflake_conn"
 DB = "AIRFLOW0928"
@@ -202,25 +203,46 @@ VALUES
     )
 
     # Step 5: 数据验证任务 —— 检查维度表、事实表行数和日期范围
-validate_data = SnowflakeOperator(
-    task_id="validate_data",
-    snowflake_conn_id=SNOWFLAKE_CONN_ID,
-    sql=f"""
-    -- 📊 Validate FACT vs COPY
+
+def validate_stock_data():
+    hook = SnowflakeHook(snowflake_conn_id="snowflake_conn")
+    conn = hook.get_conn()
+    cur = conn.cursor()
+
+    sql = f"""
     SELECT
-      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS copy_total_rows,
-      (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS copy_distinct_rows,
-      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2) AS fact_rows,
-      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2)
-        - (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS duplicate_rows,
+      (SELECT COUNT(*) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2) AS copy_total_rows,
+      (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2) AS copy_distinct_rows,
+      (SELECT COUNT(*) FROM AIRFLOW0928.DEV.FACT_STOCK_DAILY_TEAM2) AS fact_rows,
+      (SELECT COUNT(*) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2)
+        - (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2) AS duplicate_rows,
       CASE
-        WHEN (SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2) =
-             (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2)
+        WHEN (SELECT COUNT(*) FROM AIRFLOW0928.DEV.FACT_STOCK_DAILY_TEAM2) =
+             (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2)
         THEN '✅ FACT 行数与 COPY 去重后行数一致'
         ELSE '⚠️ 行数不一致，请检查重复或过滤逻辑'
       END AS validation_result;
-    """,
+    """
+
+    cur.execute(sql)
+    result = cur.fetchone()
+    print("\n======================")
+    print("数据验证结果：")
+    print(f"COPY 总行数:        {result[0]}")
+    print(f"COPY 去重行数:      {result[1]}")
+    print(f"FACT 行数:          {result[2]}")
+    print(f"重复行数:            {result[3]}")
+    print(f"验证结果:            {result[4]}")
+    print("======================\n")
+
+    cur.close()
+    conn.close()
+
+validate_data = PythonOperator(
+    task_id="validate_data",
+    python_callable=validate_stock_data,
 )
+
 
 
 
