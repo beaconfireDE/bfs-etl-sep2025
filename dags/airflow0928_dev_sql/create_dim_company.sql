@@ -1,4 +1,4 @@
-CREATE OR REPLACE TABLE dim_company (
+CREATE TABLE IF NOT EXISTS dim_company (
     COMPANY_ID            NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
     ID                     NUMBER(38,0),
     SYMBOL                 VARCHAR(20),

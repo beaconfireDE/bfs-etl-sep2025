@@ -1,4 +1,4 @@
-CREATE OR REPLACE TABLE fact_market_daily (
+CREATE TABLE IF NOT EXISTS fact_market_daily (
     FACT_ID               NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
     SYMBOL_ID             NUMBER(38,0),
     COMPANY_ID            NUMBER(38,0),

@@ -1,4 +1,4 @@
-CREATE OR REPLACE TABLE dim_date (
+CREATE TABLE IF NOT EXISTS dim_date (
     DATE_ID               NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
     FULL_DATE              DATE,
     YEAR                   NUMBER(4,0),
