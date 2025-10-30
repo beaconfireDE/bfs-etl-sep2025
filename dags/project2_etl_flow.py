@@ -303,6 +303,56 @@ with DAG(
 		"""
 	)
 
+	sanity_duplicates = SnowflakeOperator(
+		task_id="sanity_duplicates",
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        sql=f"""
+        select count(*) as num_duplicates
+		from
+		(select symbol, datekey, count(*) as cnt
+		from {TABLE_FACTPRICE}
+		group by symbol, datekey
+		having count(*) > 1);
+		"""
+	)
+
+	sanity_miss_date = SnowflakeOperator(
+		task_id="sanity_miss_date",
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        sql=f"""
+        select count(*) as num_missing_dates
+		from
+		(select f.symbol, f.datekey
+		from {TABLE_FACTPRICE} f
+		left join {TABLE_DIMDATE} d on d.datekey = f.datekey
+		where d.datekey is null);
+		"""
+	)	
+
+	sanity_miss_symbol = SnowflakeOperator(
+		task_id="sanity_miss_symbol",
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
+        sql=f"""
+        select count(*) as num_missing_symbols
+		from
+		(select f.symbol, f.datekey
+		from {TABLE_FACTPRICE} f
+		left join {TABLE_DIMSYM} s on s.symbol = f.symbol
+		where s.symbol is null);
+		"""
+	)	
 
 
 
@@ -314,4 +364,5 @@ with DAG(
 	update_dimcompany >> update_dimsymbol
 	[create_dimdate, create_dimsymbol] >> create_factprice
 	[update_dimdate, update_dimsymbol] >> update_factprice
+	update_factprice >> [sanity_duplicates, sanity_miss_date, sanity_miss_symbol]
 
