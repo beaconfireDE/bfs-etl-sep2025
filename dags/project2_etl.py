@@ -1,5 +1,8 @@
 from airflow import DAG
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from airflow.operators.python import PythonOperator
+from airflow.exceptions import AirflowException
 from datetime import datetime
 from pathlib import Path
 import os
@@ -39,6 +42,37 @@ def load_sql(file_name: str) -> str:
         sql = re.sub(pattern, f"{tbl}{TEAM_SUFFIX}", sql)
 
     return sql
+# -------------------------------------------------------------------------
+# Generic Validation Checker
+# -------------------------------------------------------------------------
+def run_validation(file_name: str):
+    """Execute validation SQL and fail DAG if any FAIL or issues > 0."""
+    hook = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID)
+    conn = hook.get_conn()
+    cursor = conn.cursor()
+
+    sql = load_sql(file_name)
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    col_names = [desc[0] for desc in cursor.description]
+
+    fail_rows = []
+    for row in results:
+        row_dict = dict(zip(col_names, row))
+        for val in row_dict.values():
+            if (isinstance(val, str) and val.strip().upper() == "FAIL") or (
+                isinstance(val, (int, float)) and val > 0
+            ):
+                fail_rows.append(row_dict)
+                break
+
+    cursor.close()
+    conn.close()
+
+    if fail_rows:
+        raise AirflowException(f"Validation failed in {file_name}:\n{fail_rows}")
+    else:
+        print(f"{file_name} passed all data validation checks.")
 
 # -----------------------------------------------------------------------------
 # DAG DEFINITION
@@ -131,18 +165,20 @@ with DAG(
         database=SNOWFLAKE_DATABASE,
         schema=SNOWFLAKE_SCHEMA,
         role=SNOWFLAKE_ROLE,
-        sql=load_sql("update_fact_market_daily .sql"),
+        sql=load_sql("update_fact_market_daily.sql"),
     )
 
-    # ------------------------- VALIDATION TASK ----------------------------------
-    validate_data_integrity = SnowflakeOperator(
-        task_id="validate_data_integrity",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        sql=load_sql("validate_data_integrity.sql"),
+    # ------------------------- VALIDATION TASKS ------------------------------
+    validate_consistency = PythonOperator(
+        task_id="validate_consistency_sampling",
+        python_callable=lambda **_: run_validation("val_post_update.sql"),
+        provide_context=True,
+    )
+
+    validate_data_integrity = PythonOperator(
+        task_id="validate_data_integrity_rules",
+        python_callable=lambda **_: run_validation("validate_data_integrity.sql"),
+        provide_context=True,
     )
 
     # ------------------------- TASK DEPENDENCIES -----------------------------
@@ -151,5 +187,6 @@ with DAG(
         >> create_fact_market_daily
         >> [update_dim_company, update_dim_date, update_dim_symbol]
         >> update_fact_market_daily
+        >> validate_consistency
         >> validate_data_integrity
     )
