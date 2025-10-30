@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
+from airflow.operators.python import PythonOperator
 
 SNOWFLAKE_CONN_ID = "snowflake_conn"
 DB = "AIRFLOW0928"
@@ -201,11 +202,10 @@ VALUES
     )
 
     # Step 5: 数据验证任务 —— 检查维度表、事实表行数和日期范围
-validate_data = SnowflakeOperator(
-    task_id="validate_data",
-    snowflake_conn_id=SNOWFLAKE_CONN_ID,
-    sql=f"""
-    -- 返回关键表行数和日期范围，用于快速校验
+def print_validation_results(**context):
+    from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+    hook = SnowflakeHook(snowflake_conn_id="snowflake_conn")
+    sql = f"""
     SELECT
       (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2)   AS dim_symbol_rows,
       (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2)  AS dim_company_rows,
@@ -213,7 +213,13 @@ validate_data = SnowflakeOperator(
       (SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2) AS fact_rows,
       (SELECT MAX(FULL_DATE) FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2)   AS latest_dim_date,
       (SELECT MAX(DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS latest_src_date;
-    """,
+    """
+    result = hook.get_first(sql)
+    print("✅ Validation Results:", result)
+
+validate_data = PythonOperator(
+    task_id="validate_data",
+    python_callable=print_validation_results,
 )
 
 
