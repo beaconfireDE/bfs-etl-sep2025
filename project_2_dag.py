@@ -117,5 +117,50 @@ with DAG(
         """
     )
 
+    # Validation Task: Check data integrity
+    validate_data = SnowflakeOperator(
+        task_id='validate_data_integrity',
+        snowflake_conn_id='snowflake_conn',
+        sql=f"""
+        -- 1. Data Range Check - prices should be positive
+        SELECT 'Data Range - Negative Prices' as check_type, COUNT(*) as issues
+        FROM AIRFLOW0602.DEV.fact_stock_daily_{GROUP_NUM}
+        WHERE open < 0 OR high < 0 OR low < 0 OR close < 0 OR price < 0
+        
+        UNION ALL
+        
+        -- Data Range Check - volume should be non-negative
+        SELECT 'Data Range - Negative Volume', COUNT(*)
+        FROM AIRFLOW0602.DEV.fact_stock_daily_{GROUP_NUM}
+        WHERE volume < 0
+        
+        UNION ALL
+        
+        -- Data Range Check - high should be >= low
+        SELECT 'Data Range - High < Low', COUNT(*)
+        FROM AIRFLOW0602.DEV.fact_stock_daily_{GROUP_NUM}
+        WHERE high < low
+        
+        UNION ALL
+        
+        -- 2. Duplicate Check - fact table (symbol_key + date should be unique)
+        SELECT 'Duplicate - fact_stock_daily', COUNT(*) - COUNT(DISTINCT symbol_key, date)
+        FROM AIRFLOW0602.DEV.fact_stock_daily_{GROUP_NUM}
+        
+        UNION ALL
+        
+        -- Duplicate Check - dim_symbol (symbol should be unique)
+        SELECT 'Duplicate - dim_symbol', COUNT(*) - COUNT(DISTINCT symbol)
+        FROM AIRFLOW0602.DEV.dim_symbol_{GROUP_NUM}
+        
+        UNION ALL
+        
+        -- Duplicate Check - only one current record per symbol in dim_company
+        SELECT 'Duplicate - Multiple Current Records', COUNT(*) - COUNT(DISTINCT symbol)
+        FROM AIRFLOW0602.DEV.dim_company_{GROUP_NUM}
+        WHERE is_current = TRUE;
+        """
+    )
+
     # Task dependencies
-    [load_dim_symbol, load_dim_company] >> insert_new_version >> load_fact_stock
+    [load_dim_symbol, load_dim_company] >> insert_new_version >> load_fact_stock >> validate_data
