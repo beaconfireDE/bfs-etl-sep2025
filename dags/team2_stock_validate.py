@@ -331,7 +331,18 @@ def validate_integrity():
     """)
     print(f"[NOT NULL Checks]    SYMBOL_ID={nulls[0]}, DATE_ID={nulls[1]}, CLOSE={nulls[2]} → {'✅' if sum(nulls)==0 else '⚠️'}")
 
-    # 4 新鲜度
+    # 4️ 数值范围
+    sanity = q(f"""
+      SELECT
+        COUNT_IF(OPEN < 0 OR HIGH < 0 OR LOW < 0 OR CLOSE < 0),
+        COUNT_IF(VOLUME < 0),
+        COUNT_IF(HIGH < LOW)
+      FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
+    """)
+    ok = (sanity[0]==0 and sanity[1]==0 and sanity[2]==0)
+    print(f"[VALUE Sanity]       neg_price={sanity[0]}, neg_vol={sanity[1]}, high<low={sanity[2]} → {'✅' if ok else '⚠️'}")
+
+    # 5️ 新鲜度
     freshness = q(f"""
       SELECT
         (SELECT MAX(DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -342,7 +353,7 @@ def validate_integrity():
     """)
     print(f"[FRESHNESS]          src_max={freshness[0]}, dim_max={freshness[1]}, fact_max={freshness[2]} → {'✅' if freshness[2] is not None else '⚠️'}")
 
-    # 5 日期覆盖
+    # 6️ 日期覆盖
     miss_dates = q(f"""
       SELECT COUNT(*) FROM (
         SELECT DISTINCT DATE FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2
@@ -351,7 +362,7 @@ def validate_integrity():
     """)[0]
     print(f"[DATE Coverage]      missing_in_dim={miss_dates} → {'✅' if miss_dates==0 else '⚠️'}")
 
-    # 6 DIM_COMPANY 与最新公司画像一致（Type-1）
+    # 7️ DIM_COMPANY 与最新公司画像一致（Type-1）
     company_mismatch = q(f"""
       WITH latest_profile AS (
         SELECT t.* FROM (
