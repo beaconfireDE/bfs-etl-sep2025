@@ -10,8 +10,8 @@ SCHEMA = "DEV"
 
 DEFAULT_ARGS = {"owner": "team2",
    "depends_on_past": False,   
-     "retries": 1,                # Retry once when failed
-    "retry_delay": timedelta(minutes=3) # Every retry is seperated in 3 minutes
+     "retries": 1,                # 失败时最多重试 1 次
+    "retry_delay": timedelta(minutes=3) # 每次重试间隔 3 分钟
    
    }
 
@@ -20,49 +20,17 @@ with DAG(
     dag_id="team2_stock_validate",
     default_args=DEFAULT_ARGS,
     start_date=datetime(2025, 10, 29),
-    schedule="0 6 * * *",  # Start at 06:00 America/Chicago
+    schedule="0 6 * * *",  # 每天 06:00 America/Chicago
     catchup=False,
     tags=["stock", "etl", "team2", "unified"],
 ) as dag:
 
-    # Unify Database, Schema and Connection
+    # 统一切库&架构（必要）
     use_db_schema = SnowflakeOperator(
         task_id="use_db_schema",
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"USE DATABASE {DB}; USE SCHEMA {SCHEMA};",
     )
-
-    #clone STOCK_HISTORY 
-    clone_stock_history = SnowflakeOperator(
-        task_id="clone_stock_history",                
-        snowflake_conn_id="snowflake_conn",           
-        sql="""
-            CREATE OR REPLACE TABLE AIRFLOW0928.DEV.COPY_STOCK_HISTORY_TEAM2
-            CLONE US_STOCK_DAILY.DCCM.STOCK_HISTORY;
-        """,
-    )
-
-    # clone COMPANY_PROFILE 
-    clone_company_profile = SnowflakeOperator(
-        task_id="clone_company_profile",
-        snowflake_conn_id="snowflake_conn",
-        sql="""
-            CREATE OR REPLACE TABLE AIRFLOW0928.DEV.COPY_COMPANY_PROFILE_TEAM2
-            CLONE US_STOCK_DAILY.DCCM.COMPANY_PROFILE;
-        """,
-    )
-
-    # clone SYMBOLS 
-    clone_symbols = SnowflakeOperator(
-        task_id="clone_symbols",
-        snowflake_conn_id="snowflake_conn",
-        sql="""
-            CREATE OR REPLACE TABLE AIRFLOW0928.DEV.COPY_SYMBOLS_TEAM2
-            CLONE US_STOCK_DAILY.DCCM.SYMBOLS;
-        """,
-    )
-
-
 
     # 1) DIM_SYMBOL：Type-1 覆盖（既适合全量也适合增量）
     upsert_dim_symbol = SnowflakeOperator(
@@ -396,4 +364,4 @@ validate_data = PythonOperator(
 
 
 # DAG 执行顺序
-[clone_stock_history,clone_company_profile,clone_symbols] >> use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
+use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
