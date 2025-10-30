@@ -202,25 +202,26 @@ VALUES
     )
 
     # Step 5: 数据验证任务 —— 检查维度表、事实表行数和日期范围
-def print_validation_results(**context):
-    from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-    hook = SnowflakeHook(snowflake_conn_id="snowflake_conn")
-    sql = f"""
-    SELECT
-      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2)   AS dim_symbol_rows,
-      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2)  AS dim_company_rows,
-      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2)     AS dim_date_rows,
-      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2) AS fact_rows,
-      (SELECT MAX(FULL_DATE) FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2)   AS latest_dim_date,
-      (SELECT MAX(DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS latest_src_date;
-    """
-    result = hook.get_first(sql)
-    print("✅ Validation Results:", result)
-
-validate_data = PythonOperator(
+validate_data = SnowflakeOperator(
     task_id="validate_data",
-    python_callable=print_validation_results,
+    snowflake_conn_id=SNOWFLAKE_CONN_ID,
+    sql=f"""
+    -- 📊 Validate FACT vs COPY
+    SELECT
+      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS copy_total_rows,
+      (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS copy_distinct_rows,
+      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2) AS fact_rows,
+      (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2)
+        - (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2) AS duplicate_rows,
+      CASE
+        WHEN (SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2) =
+             (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2)
+        THEN '✅ FACT 行数与 COPY 去重后行数一致'
+        ELSE '⚠️ 行数不一致，请检查重复或过滤逻辑'
+      END AS validation_result;
+    """,
 )
+
 
 
 use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
