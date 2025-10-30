@@ -15,7 +15,7 @@ DEFAULT_ARGS = {"owner": "team2",
 
 
 with DAG(
-    dag_id="stock_etl_unified_team2",
+    dag_id="team2_stock_validate",
     default_args=DEFAULT_ARGS,
     start_date=datetime(2025, 10, 29),
     schedule="0 6 * * *",  # 每天 06:00 America/Chicago
