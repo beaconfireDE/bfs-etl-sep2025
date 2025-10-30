@@ -1,0 +1,22 @@
+CREATE OR REPLACE TABLE dim_company (
+    COMPANY_ID            NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
+    ID                     NUMBER(38,0),
+    SYMBOL                 VARCHAR(20),
+    COMPANYNAME            VARCHAR(200),
+    SECTOR                 VARCHAR(100),
+    INDUSTRY               VARCHAR(100),
+    CEO                    VARCHAR(100),
+    WEBSITE                VARCHAR(200),
+    EXCHANGE               VARCHAR(50),
+    DESCRIPTION            VARCHAR(2000),
+    PRICE                  FLOAT,
+    BETA                   FLOAT,
+    VOLAVG                 NUMBER(38,0),
+    MKTCAP                 NUMBER(38,0),
+    LASTDIV                FLOAT,
+    RANGE                  VARCHAR(50),
+    CHANGES                FLOAT,
+    DCFDIFF                FLOAT,
+    DCF                    FLOAT,
+    LOAD_TS                TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);

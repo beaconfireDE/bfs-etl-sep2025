@@ -1,0 +1,7 @@
+CREATE OR REPLACE TABLE dim_symbol (
+    SYMBOL_ID             NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
+    SYMBOL                 VARCHAR(20),
+    NAME                   VARCHAR(200),
+    EXCHANGE               VARCHAR(50),
+    LOAD_TS                TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+);

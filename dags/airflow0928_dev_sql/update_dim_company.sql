@@ -1,0 +1,37 @@
+MERGE INTO dim_company AS tgt
+USING (
+    SELECT 
+        ID, SYMBOL, COMPANYNAME, SECTOR, INDUSTRY, CEO, WEBSITE, EXCHANGE, DESCRIPTION,
+        PRICE, BETA, VOLAVG, MKTCAP, LASTDIV, RANGE, CHANGES, DCFDIFF, DCF
+    FROM US_STOCK_DAILY.DCCM.Company_Profile
+) AS src
+ON tgt.SYMBOL = src.SYMBOL
+
+WHEN MATCHED THEN UPDATE SET
+    tgt.COMPANYNAME = src.COMPANYNAME,
+    tgt.SECTOR      = src.SECTOR,
+    tgt.INDUSTRY    = src.INDUSTRY,
+    tgt.CEO         = src.CEO,
+    tgt.WEBSITE     = src.WEBSITE,
+    tgt.EXCHANGE    = src.EXCHANGE,
+    tgt.DESCRIPTION = src.DESCRIPTION,
+    tgt.PRICE       = src.PRICE,
+    tgt.BETA        = src.BETA,
+    tgt.VOLAVG      = src.VOLAVG,
+    tgt.MKTCAP      = src.MKTCAP,
+    tgt.LASTDIV     = src.LASTDIV,
+    tgt.RANGE       = src.RANGE,
+    tgt.CHANGES     = src.CHANGES,
+    tgt.DCFDIFF     = src.DCFDIFF,
+    tgt.DCF         = src.DCF,
+    tgt.LOAD_TS     = CURRENT_TIMESTAMP()
+
+WHEN NOT MATCHED THEN INSERT (
+    ID, SYMBOL, COMPANYNAME, SECTOR, INDUSTRY, CEO, WEBSITE, EXCHANGE, DESCRIPTION,
+    PRICE, BETA, VOLAVG, MKTCAP, LASTDIV, RANGE, CHANGES, DCFDIFF, DCF, LOAD_TS
+)
+VALUES (
+    src.ID, src.SYMBOL, src.COMPANYNAME, src.SECTOR, src.INDUSTRY, src.CEO, src.WEBSITE,
+    src.EXCHANGE, src.DESCRIPTION, src.PRICE, src.BETA, src.VOLAVG, src.MKTCAP, src.LASTDIV,
+    src.RANGE, src.CHANGES, src.DCFDIFF, src.DCF, CURRENT_TIMESTAMP()
+);
