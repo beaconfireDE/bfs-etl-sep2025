@@ -63,6 +63,7 @@ with DAG(
     )
 
 
+
     # 1) DIM_SYMBOL：Type-1 覆盖（既适合全量也适合增量）
     upsert_dim_symbol = SnowflakeOperator(
         task_id="upsert_dim_symbol",
@@ -395,4 +396,4 @@ validate_data = PythonOperator(
 
 
 # DAG 执行顺序
-use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
+[clone_stock_history,clone_company_profile,clone_symbols] >> use_db_schema >> upsert_dim_symbol >> upsert_dim_company >> extend_dim_date >> upsert_fact >> validate_data
