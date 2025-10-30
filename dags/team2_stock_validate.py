@@ -219,7 +219,7 @@ def validate_integrity():
     print("数据验证报告：")
     print("==============================\n")
 
-    # 1️⃣ DIM_SYMBOL
+    # 1️ DIM_SYMBOL
     cur.execute(f"""
         SELECT 
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_SYMBOLS_TEAM2),
@@ -230,7 +230,7 @@ def validate_integrity():
     result_symbol = "✅一致" if copy_distinct == dim_rows else "⚠️不一致"
     print(f"[DIM_SYMBOL]\nCOPYSYMBOL总行数: {copy_total}, 去重后: {copy_distinct}, DIMSYMBOL行数: {dim_rows} → {result_symbol}\n")
 
-    # 2️⃣ DIM_COMPANY
+    # 2️ DIM_COMPANY
     cur.execute(f"""
         SELECT 
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2),
@@ -241,7 +241,7 @@ def validate_integrity():
     result_company = "✅一致" if copy_distinct == dim_rows else "⚠️不一致"
     print(f"[DIM_COMPANY]\nCOPYCOMPANY总行数: {copy_total}, 去重后: {copy_distinct}, DIMCOMPANY行数: {dim_rows} → {result_company}\n")
 
-    # 3️⃣ DIM_DATE
+    # 3️ DIM_DATE
     cur.execute(f"""
         SELECT 
           (SELECT COUNT(DISTINCT DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -253,7 +253,7 @@ def validate_integrity():
     result_date = "✅日期覆盖完整" if dim_dates >= copy_dates else "⚠️日期缺失"
     print(f"[DIM_DATE]\nCOPY唯一日期: {copy_dates}, DIM日期行数: {dim_dates}\n最大日期: COPY={copy_max}, DIM={dim_max} → {result_date}\n")
 
-    # 4️⃣ FACT_STOCK_DAILY
+    # 4️ FACT_STOCK_DAILY
     cur.execute(f"""
         SELECT
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -267,7 +267,7 @@ def validate_integrity():
 
     print("\n========== DATA INTEGRITY REPORT ==========\n")
 
-    # 1️⃣ 外键完整性
+    # 1️ 外键完整性
     missing_symbol_fk = q(f"""
       SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
       LEFT JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s ON f.SYMBOL_ID = s.SYMBOL_ID
@@ -282,14 +282,14 @@ def validate_integrity():
     """)[0]
     print(f"[FK FACT→DIM_DATE]   {'✅' if missing_date_fk==0 else '⚠️'} 缺失: {missing_date_fk}")
 
-    # 2️⃣ 唯一性
+    # 2️ 唯一性
     dup_keys = q(f"""
       SELECT COUNT(*) - COUNT(DISTINCT SYMBOL_ID || '-' || DATE_ID)
       FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
     """)[0]
     print(f"[UNIQUENESS FACT PK] {'✅' if dup_keys==0 else '⚠️'} 重复主键: {dup_keys}")
 
-    # 3️⃣ 非空检查
+    # 3️ 非空检查
     nulls = q(f"""
       SELECT
         COUNT_IF(SYMBOL_ID IS NULL),
@@ -299,7 +299,7 @@ def validate_integrity():
     """)
     print(f"[NOT NULL Checks]    SYMBOL_ID={nulls[0]}, DATE_ID={nulls[1]}, CLOSE={nulls[2]} → {'✅' if sum(nulls)==0 else '⚠️'}")
 
-    # 4️⃣ 数值范围
+    # 4️ 数值范围
     sanity = q(f"""
       SELECT
         COUNT_IF(OPEN < 0 OR HIGH < 0 OR LOW < 0 OR CLOSE < 0),
@@ -310,7 +310,7 @@ def validate_integrity():
     ok = (sanity[0]==0 and sanity[1]==0 and sanity[2]==0)
     print(f"[VALUE Sanity]       neg_price={sanity[0]}, neg_vol={sanity[1]}, high<low={sanity[2]} → {'✅' if ok else '⚠️'}")
 
-    # 5️⃣ 新鲜度
+    # 5️ 新鲜度
     freshness = q(f"""
       SELECT
         (SELECT MAX(DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -321,7 +321,7 @@ def validate_integrity():
     """)
     print(f"[FRESHNESS]          src_max={freshness[0]}, dim_max={freshness[1]}, fact_max={freshness[2]} → {'✅' if freshness[2] is not None else '⚠️'}")
 
-    # 6️⃣ 日期覆盖
+    # 6️ 日期覆盖
     miss_dates = q(f"""
       SELECT COUNT(*) FROM (
         SELECT DISTINCT DATE FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2
@@ -330,7 +330,7 @@ def validate_integrity():
     """)[0]
     print(f"[DATE Coverage]      missing_in_dim={miss_dates} → {'✅' if miss_dates==0 else '⚠️'}")
 
-    # 7️⃣ DIM_COMPANY 与最新公司画像一致（Type-1）
+    # 7️ DIM_COMPANY 与最新公司画像一致（Type-1）
     company_mismatch = q(f"""
       WITH latest_profile AS (
         SELECT t.* FROM (
@@ -349,7 +349,7 @@ def validate_integrity():
     print(f"[DIM_COMPANY T1]     {'✅' if company_mismatch==0 else '⚠️'} 不一致: {company_mismatch}")
 
     print("\n==============================")
-    print("🏁 验证完成！")
+    print(" 验证完成")
     print("==============================\n")
 
     cur.close()
