@@ -228,7 +228,7 @@ def validate_integrity():
     """)
     copy_total, copy_distinct, dim_rows = cur.fetchone()
     result_symbol = "✅一致" if copy_distinct == dim_rows else "⚠️不一致"
-    print(f"[DIM_SYMBOL]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, DIM行数: {dim_rows} → {result_symbol}\n")
+    print(f"[DIM_SYMBOL]\nCOPYSYMBOL总行数: {copy_total}, 去重后: {copy_distinct}, DIMSYMBOL行数: {dim_rows} → {result_symbol}\n")
 
     # 2️⃣ DIM_COMPANY
     cur.execute(f"""
@@ -239,7 +239,7 @@ def validate_integrity():
     """)
     copy_total, copy_distinct, dim_rows = cur.fetchone()
     result_company = "✅一致" if copy_distinct == dim_rows else "⚠️不一致"
-    print(f"[DIM_COMPANY]\nCOPY总行数: {copy_total}, 去重后: {copy_distinct}, DIM行数: {dim_rows} → {result_company}\n")
+    print(f"[DIM_COMPANY]\nCOPYCOMPANY总行数: {copy_total}, 去重后: {copy_distinct}, DIMCOMPANY行数: {dim_rows} → {result_company}\n")
 
     # 3️⃣ DIM_DATE
     cur.execute(f"""
