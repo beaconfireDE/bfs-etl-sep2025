@@ -29,8 +29,8 @@ TABLE_FACTPRICE = 'fact_daily_price_team1'
 with DAG(
 	dag_id="project2_etl_taskflow",
     start_date=datetime(2025, 10, 24),
-    # schedule='0 7 * * *',
-    schedule = None, # Run on demand
+    schedule='0 5,10,15 * * *', # Run at 5:00, 10:00,and 15:00
+    # schedule = None, # Run on demand
     # default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
     tags=['project2', 'snowflake', 'S3'],
     catchup=False,
