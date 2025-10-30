@@ -166,8 +166,80 @@ constraint fk_daily_date foreign key (datekey) references dim_date_team1 (dateke
 constraint fk_daily_symbol foreign key (symbol) references dim_symbol_team1 (symbol)
 );
 
+-- drop table fact_daily_price_team1;
+
 insert into fact_daily_price_team1 (symbol, datekey, open, high, low, close, adjclose, volume)
+with rownum as (
+    select symbol, date, open, high, low, close, adjclose, volume,
+        row_number() over (partition by symbol, date order by symbol) as rn
+    from identifier($t_hist)
+),
+unique_price as (
+select symbol, date, open, high, low, close, adjclose, volume from rownum
+where rn = 1
+)
 select h.symbol, d.datekey, h.open, h.high, h.low, h.close, h.adjclose, h.volume
-from identifier($t_hist) h
+from unique_price h
 join dim_date_team1 d
 on h.date = d.date;
+
+select * from 
+(select symbol, date, count(*) as counts
+from identifier($t_hist)
+group by symbol, date) t
+where t.counts > 1;
+
+select * from identifier($t_hist) h
+join (
+select * from 
+(select symbol, date, count(*) as counts
+from identifier($t_hist)
+group by symbol, date) t
+where t.counts > 1) new
+on h.symbol = new.symbol and h.date = new.date;
+
+
+--- Stock history table has duplicates!
+with rownum as (
+    select symbol, date, open, high, low, close, adjclose, volume,
+        row_number() over (partition by symbol, date order by symbol) as rn
+    from identifier($t_hist)
+),
+unique_price as (
+select symbol, date, open, high, low, close, adjclose, volume from rownum
+where rn = 1
+)
+select h.symbol, d.datekey, h.open, h.high, h.low, h.close, h.adjclose, h.volume
+from unique_price h
+join dim_date_team1 d
+on h.date = d.date;
+
+
+------ Sanity tests
+select count(*) as tot_rows
+from fact_daily_price_team1;
+
+-- No duplicates
+select count(*) as num_duplicates
+from
+(select symbol, datekey, count(*) as cnt
+from fact_daily_price_team1
+group by symbol, datekey
+having count(*) > 1);
+
+-- missing date
+select count(*) as num_missing_dates
+from
+(select f.symbol, f.datekey
+from fact_daily_price_team1 f
+left join dim_date_team1 d on d.datekey = f.datekey
+where d.datekey is null);
+
+-- missing symbol
+select count(*) as num_missing_symbols
+from
+(select f.symbol, f.datekey
+from fact_daily_price_team1 f
+left join dim_symbol_team1 s on s.symbol = f.symbol
+where s.symbol is null);
+
