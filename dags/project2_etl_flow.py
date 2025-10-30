@@ -255,7 +255,7 @@ with DAG(
 	create_dimdate >> update_dimdate
 	create_dimcompany >> [create_dimsymbol, update_dimcompany]
 	create_dimsymbol >> update_dimsymbol	
-	update_dimdate >> update_dimsymbol
 	update_dimcompany >> update_dimsymbol
-	update_dimsymbol >> create_factprice >> update_factprice
+	[create_dimdate, create_dimsymbol] >> create_factprice
+	[update_dimdate, update_dimsymbol] >> update_factprice
 
