@@ -62,7 +62,7 @@ with DAG(
         role=SNOWFLAKE_ROLE,
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        create or replace table {TABLE_DIMDATE} (
+        create table if not exists {TABLE_DIMDATE} (
 		datekey number(8, 0) primary key,
 		date date not null unique, 
 		year number(4, 0),
@@ -89,28 +89,37 @@ with DAG(
         set min_date = (select min(date) from {COPY_TABLE_HISTORY});
 		set max_date = current_date(); 
 
-		insert into {TABLE_DIMDATE} 
-		(date, datekey, year, quarter, month, month_name, day, day_of_week, dow_name, week_of_year, is_weekend)
-		with recursive more_dates as (
+		merge into {TABLE_DIMDATE} tgt
+		using (
+		  with recursive more_dates as (
 		    select $min_date as d
 		    union all
-		    select dateadd('day', 1, d)
-		    from more_dates
-		    where d < $max_date
-		)
-		select 
-		    d,
-		    cast(to_char(d, 'YYYYMMDD') as number),
-		    year(d),
-		    quarter(d),
-		    month(d),
-		    to_char(d, 'MMMM'),
-		    day(d),
-		    dayofweekiso(d),
-		    to_char(d, 'DY'),
-		    weekofyear(d),
-		    iff(dayofweekiso(d) >= 6, True, False)
-		from more_dates;
+		    select dateadd('day', 1, d) from more_dates where d < $max_date
+		  )
+		  select d as date,
+		         cast(to_char(d,'YYYYMMDD') as number) as datekey,
+		         year(d) as year, quarter(d) as quarter, month(d) as month,
+		         to_char(d,'MMMM') as month_name, day(d) as day,
+		         dayofweekiso(d) as day_of_week, to_char(d,'DY') as dow_name,
+		         weekofyear(d) as week_of_year,
+		         iff(dayofweekiso(d) >= 6, True, False) as is_weekend
+		  from more_dates
+		) src
+		on tgt.date = src.date
+		when matched then update set
+		  tgt.datekey = src.datekey,
+		  tgt.year = src.year,
+		  tgt.quarter = src.quarter,
+		  tgt.month = src.month,
+		  tgt.month_name = src.month_name,
+		  tgt.day = src.day,
+		  tgt.day_of_week = src.day_of_week,
+		  tgt.dow_name = src.dow_name,
+		  tgt.week_of_year = src.week_of_year,
+		  tgt.is_weekend = src.is_weekend
+		when not matched then insert (date, datekey, year, quarter, month, month_name, day, day_of_week, dow_name, week_of_year, is_weekend)
+		values (src.date, src.datekey, src.year, src.quarter, src.month, src.month_name, src.day, src.day_of_week, src.dow_name, src.week_of_year, src.is_weekend);
+
 		"""
 	)
 
@@ -122,7 +131,7 @@ with DAG(
         role=SNOWFLAKE_ROLE,
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        create or replace table {TABLE_DIMCOM} (
+        create table if not exists {TABLE_DIMCOM} (
 		company_id number(8, 0) primary key identity start 1 increment 1,
 		companyname varchar(512) not null,
 		website varchar(64),
@@ -142,18 +151,25 @@ with DAG(
         role=SNOWFLAKE_ROLE,
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        insert into {TABLE_DIMCOM}
-		(companyname, website, description, CEO, sector, industry)
+        merge into {TABLE_DIMCOM} tgt
+		using (
+		  with ordered_profiles as (
+		    select coalesce(companyname,'unnamed company') as companyname, website, description, CEO, sector, industry,
+		           row_number() over (partition by companyname order by id) as rn
+		    from {COPY_TABLE_COM_PROFILE}
+		  )
+		  select * from ordered_profiles where rn = 1
+		) src
+		on tgt.companyname = src.companyname
+		when matched then update set
+		  tgt.website = src.website,
+		  tgt.description = src.description,
+		  tgt.CEO = src.CEO,
+		  tgt.sector = src.sector,
+		  tgt.industry = src.industry
+		when not matched then insert (companyname, website, description, CEO, sector, industry)
+		values (src.companyname, src.website, src.description, src.CEO, src.sector, src.industry);
 
-		with ordered_profiles as (
-		select coalesce(companyname, 'unnamed company') as companyname, website, description, CEO, sector, industry,
-		    row_number() over (partition by companyname order by id) as rn
-		from {COPY_TABLE_COM_PROFILE}
-		)
-
-		select companyname, website, description, CEO, sector, industry
-		from ordered_profiles
-		where rn = 1;
 		"""
 	)
 
@@ -165,7 +181,7 @@ with DAG(
         role=SNOWFLAKE_ROLE,
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        create or replace table {TABLE_DIMSYM} (
+        create table if not exists {TABLE_DIMSYM} (
 		symbol varchar(16) primary key,
 		exchange varchar(64),
 		name varchar(256),
@@ -193,15 +209,31 @@ with DAG(
         role=SNOWFLAKE_ROLE,
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        insert into {TABLE_DIMSYM}
-		select s.symbol, s.exchange, s.name,
-		    c.company_id, com.beta, com.volavg, com.mktcap, 
-		    com.lastdiv, com.range, com.price, com.dcf, com.dcfdiff
-		from {COPY_TABLE_SYMBOL} s
-		join {COPY_TABLE_COM_PROFILE} com
-		on s.symbol = com.symbol
-		join {TABLE_DIMCOM} c
-		on coalesce(com.companyname, 'unnamed company') = c.companyname;
+        merge into {TABLE_DIMSYM} tgt
+		using (
+		  select s.symbol, s.exchange, s.name,
+		         c.company_id, com.beta, com.volavg, com.mktcap,
+		         com.lastdiv, com.range, com.price, com.dcf, com.dcfdiff
+		  from {COPY_TABLE_SYMBOL} s
+		  join {COPY_TABLE_COM_PROFILE} com on s.symbol = com.symbol
+		  join {TABLE_DIMCOM} c on coalesce(com.companyname,'unnamed company') = c.companyname
+		) src
+		on tgt.symbol = src.symbol
+		when matched then update set
+		  tgt.exchange = src.exchange,
+		  tgt.name = src.name,
+		  tgt.company_id = src.company_id,
+		  tgt.beta = src.beta,
+		  tgt.volavg = src.volavg,
+		  tgt.mktcap = src.mktcap,
+		  tgt.lastdiv = src.lastdiv,
+		  tgt.range = src.range,
+		  tgt.price = src.price,
+		  tgt.dcf = src.dcf,
+		  tgt.dcfdiff = src.dcfdiff
+		when not matched then insert (symbol, exchange, name, company_id, beta, volavg, mktcap, lastdiv, range, price, dcf, dcfdiff)
+		values (src.symbol, src.exchange, src.name, src.company_id, src.beta, src.volavg, src.mktcap, src.lastdiv, src.range, src.price, src.dcf, src.dcfdiff);
+
 		"""
 	)
 
@@ -213,7 +245,7 @@ with DAG(
         role=SNOWFLAKE_ROLE,
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        create or replace table {TABLE_FACTPRICE} (
+        create table if not exists {TABLE_FACTPRICE} (
 		price_key number(38, 0) identity,
 		symbol varchar(16) not null,
 		datekey number(8, 0) not null,
@@ -239,11 +271,23 @@ with DAG(
         role=SNOWFLAKE_ROLE,
         snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        insert into {TABLE_FACTPRICE} (symbol, datekey, open, high, low, close, adjclose, volume)
-		select h.symbol, d.datekey, h.open, h.high, h.low, h.close, h.adjclose, h.volume
-		from {COPY_TABLE_HISTORY} h
-		join {TABLE_DIMDATE} d
-		on h.date = d.date;
+        merge into {TABLE_FACTPRICE} tgt
+		using (
+		  select h.symbol, d.datekey, h.open, h.high, h.low, h.close, h.adjclose, h.volume, d.date
+		  from {COPY_TABLE_HISTORY} h
+		  join {TABLE_DIMDATE} d on h.date = d.date
+		) src
+		on tgt.symbol = src.symbol and tgt.datekey = src.datekey
+		when matched then update set
+		  tgt.open = src.open,
+		  tgt.high = src.high,
+		  tgt.low = src.low,
+		  tgt.close = src.close,
+		  tgt.adjclose = src.adjclose,
+		  tgt.volume = src.volume
+		when not matched then insert (symbol, datekey, open, high, low, close, adjclose, volume)
+		values (src.symbol, src.datekey, src.open, src.high, src.low, src.close, src.adjclose, src.volume);
+
 		"""
 	)
 
