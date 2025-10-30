@@ -349,7 +349,7 @@ def validate_integrity():
     print(f"[DIM_COMPANY T1]     {'✅' if company_mismatch==0 else '⚠️'} 不一致: {company_mismatch}")
 
     print("\n==============================")
-    print(" 验证完成")
+    print("验证完成")
     print("==============================\n")
 
     cur.close()
