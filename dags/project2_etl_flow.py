@@ -273,10 +273,22 @@ with DAG(
         sql=f"""
         merge into {TABLE_FACTPRICE} tgt
 		using (
-		  select h.symbol, d.datekey, h.open, h.high, h.low, h.close, h.adjclose, h.volume, d.date
-		  from {COPY_TABLE_HISTORY} h
-		  join {TABLE_DIMDATE} d on h.date = d.date
+
+			with rownum as (
+		    select symbol, date, open, high, low, close, adjclose, volume,
+		        row_number() over (partition by symbol, date order by symbol) as rn
+		    from {COPY_TABLE_HISTORY}
+		),
+		unique_price as (
+		select symbol, date, open, high, low, close, adjclose, volume from rownum
+		where rn = 1
+		)
+		select h.symbol, d.datekey, h.open, h.high, h.low, h.close, h.adjclose, h.volume
+		from unique_price h
+		join {TABLE_DIMDATE} d
+		on h.date = d.date
 		) src
+
 		on tgt.symbol = src.symbol and tgt.datekey = src.datekey
 		when matched then update set
 		  tgt.open = src.open,
