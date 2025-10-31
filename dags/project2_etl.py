@@ -258,7 +258,7 @@ VALUES (
     "val_post_update.sql": """-- 1. Row count validation -------------------------------------------------
 SELECT 
     (SELECT COUNT(*) FROM fact_market_daily) AS target_count,
-    (SELECT COUNT(*) 
+    (SELECT COUNT(DISTINCT sh.SYMBOL, TRY_TO_DATE(sh.DATE))
      FROM US_STOCK_DAILY.DCCM.Stock_History sh
      WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL) AS source_count,
     CASE 
