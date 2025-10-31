@@ -222,6 +222,10 @@ USING (
     INNER JOIN AIRFLOW0928.DEV.dim_company_team3 comp ON sh.SYMBOL = comp.SYMBOL
     INNER JOIN AIRFLOW0928.DEV.dim_date_team3 dt ON TRY_TO_DATE(sh.DATE) = dt.FULL_DATE
     WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL
+      AND sh.OPEN >= 0 AND sh.HIGH >= 0 AND sh.LOW >= 0 AND sh.CLOSE >= 0 AND sh.ADJCLOSE >= 0
+      AND sh.HIGH >= sh.LOW
+      AND sh.HIGH >= sh.OPEN AND sh.HIGH >= sh.CLOSE
+      AND sh.LOW <= sh.OPEN AND sh.LOW <= sh.CLOSE
     GROUP BY sh.SYMBOL, TRY_TO_DATE(sh.DATE)
 ) AS src
 ON tgt.SYMBOL = src.SYMBOL AND tgt.TRADE_DATE = src.TRADE_DATE
