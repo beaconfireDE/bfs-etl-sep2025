@@ -492,14 +492,17 @@ with DAG(
         # ---------- 9) 若有 FAILED 则抛错 ----------
        f"""
        DECLARE failed_cnt NUMBER;
+       DECLARE msg STRING;
+
        BEGIN
-       SELECT COUNT(*) INTO :failed_cnt
+       SELECT COUNT(*) INTO failed_cnt
        FROM {DB}.{SCHEMA}.DQ_RESULTS
        WHERE check_time >= DATEADD(hour, -2, CURRENT_TIMESTAMP())
        AND status = 'FAILED';
 
        IF (failed_cnt > 0) THEN
-       RAISE STATEMENT_ERROR WITH MESSAGE = 'DQ_FAILED: ' || failed_cnt || ' checks failed';
+       msg := 'DQ_FAILED: ' || failed_cnt || ' checks failed';
+       RAISE STATEMENT_ERROR WITH MESSAGE = msg;
        END IF;
        END;
        """
