@@ -126,6 +126,11 @@ with DAG(
 
 	create_dimdate = SnowflakeOperator(
         task_id="create_dimdate",
+        warehouse=SNOWFLAKE_WAREHOUSE,
+        database=SNOWFLAKE_DATABASE,
+        schema=SNOWFLAKE_SCHEMA,
+        role=SNOWFLAKE_ROLE,
+        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         create table if not exists {TABLE_DIMDATE} (
 		datekey number(8, 0) primary key,
