@@ -11,6 +11,16 @@ SNOWFLAKE_SCHEMA = 'DEV'
 
 SNOWFLAKE_ROLE = 'DE_DEVELOPER_0928'
 SNOWFLAKE_WAREHOUSE = 'DE_0928_WH'
+
+default_args = {
+	'warehouse': SNOWFLAKE_WAREHOUSE,
+    'database': SNOWFLAKE_DATABASE,
+    'schema': SNOWFLAKE_SCHEMA,
+    'role': SNOWFLAKE_ROLE,
+    'snowflake_conn_id': SNOWFLAKE_CONN_ID
+}
+
+
 # SNOWFLAKE_STAGE = 's3_stage_trans_order'
 # SNOWFLAKE_FORMAT = 'assignment0928.as_prod.team1_prj1_format'
 SOURCE_TABLE_COM_PROFILE = 'US_STOCK_DAILY.DCCM.Company_Profile'
@@ -85,36 +95,26 @@ with DAG(
     start_date=datetime(2025, 10, 24),
     schedule='0 5,10,15 * * *', # Run at 5:00, 10:00,and 15:00
     # schedule = None, # Run on demand
-    # default_args={'snowflake_conn_id': SNOWFLAKE_CONN_ID},
+    default_args=default_args,
     tags=['project2', 'snowflake', 'S3'],
     catchup=False,
 ) as dag:
 	clone_tables = SnowflakeOperator(
 		task_id="clone_tables",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
-        create table if not exists {COPY_TABLE_COM_PROFILE}
+        create or replace table {COPY_TABLE_COM_PROFILE}
 		clone {SOURCE_TABLE_COM_PROFILE};
 
-		create table if not exists {COPY_TABLE_HISTORY}
+		create or replace table {COPY_TABLE_HISTORY}
 		clone {SOURCE_TABLE_HISTORY};
 
-		create table if not exists {COPY_TABLE_SYMBOL}
+		create or replace table {COPY_TABLE_SYMBOL}
 		clone {SOURCE_TABLE_SYMBOL};
 		"""
 	)
 
 	create_dimdate = SnowflakeOperator(
         task_id="create_dimdate",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         create table if not exists {TABLE_DIMDATE} (
 		datekey number(8, 0) primary key,
@@ -134,11 +134,6 @@ with DAG(
 
 	update_dimdate = SnowflakeOperator(
         task_id="update_dimdate",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         set min_date = (select min(date) from {COPY_TABLE_HISTORY});
 		set max_date = current_date(); 
@@ -179,11 +174,6 @@ with DAG(
 
 	create_dimcompany = SnowflakeOperator(
         task_id="create_dimcompany",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         create table if not exists {TABLE_DIMCOM} (
 		company_id number(8, 0) primary key identity start 1 increment 1,
@@ -199,11 +189,6 @@ with DAG(
 
 	update_dimcompany = SnowflakeOperator(
         task_id="update_dimcompany",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         merge into {TABLE_DIMCOM} tgt
 		using (
@@ -229,11 +214,6 @@ with DAG(
 
 	create_dimsymbol = SnowflakeOperator(
         task_id="create_dimsymbol",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         create table if not exists {TABLE_DIMSYM} (
 		symbol varchar(16) primary key,
@@ -257,11 +237,6 @@ with DAG(
 
 	update_dimsymbol = SnowflakeOperator(
         task_id="update_dimsymbol",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         merge into {TABLE_DIMSYM} tgt
 		using (
@@ -293,11 +268,6 @@ with DAG(
 
 	create_factprice = SnowflakeOperator(
 		task_id="create_factprice",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         create table if not exists {TABLE_FACTPRICE} (
 		price_key number(38, 0) identity,
@@ -319,11 +289,6 @@ with DAG(
 
 	update_factprice = SnowflakeOperator(
         task_id="update_factprice",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
         sql=f"""
         merge into {TABLE_FACTPRICE} tgt
 		using (
@@ -412,9 +377,6 @@ with DAG(
 	    task_id="dq_checks_log_only",
 	    python_callable=run_dq_checks_log_only,
 	)
-
-
-
 
 
 
