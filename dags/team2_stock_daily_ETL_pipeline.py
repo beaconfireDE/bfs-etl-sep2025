@@ -365,21 +365,19 @@ def validate_integrity():
 
     # 7️ DIM_COMPANY Type-1 Consistency
     company_mismatch = q(f"""
-      WITH latest_profile AS (
-        SELECT t.* FROM (
-          SELECT *, ROW_NUMBER() OVER (PARTITION BY SYMBOL ORDER BY ID DESC) rn
-          FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2
-        ) t WHERE rn=1
-      )
-      SELECT COUNT(*)
-      FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2 dc
-      JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 ds ON ds.SYMBOL_ID = dc.SYMBOL_ID
-      JOIN latest_profile lp ON lp.SYMBOL = ds.SYMBOL
-      WHERE NVL(dc.COMPANY_NAME,'') <> NVL(lp.COMPANYNAME,'')
-         OR NVL(dc.INDUSTRY,'')     <> NVL(lp.INDUSTRY,'')
-         OR NVL(dc.SECTOR,'')       <> NVL(lp.SECTOR,'')
-    """)[0]
-    print(f"[DIM_COMPANY T1]     {'✅' if company_mismatch==0 else '⚠️'} Inconsistent: {company_mismatch}")
+    SELECT COUNT(*)
+    FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2 dc
+    JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 ds 
+      ON ds.SYMBOL_ID = dc.SYMBOL_ID
+    JOIN {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2 cp 
+      ON cp.SYMBOL = ds.SYMBOL
+    WHERE NVL(dc.COMPANY_NAME, '') <> NVL(cp.COMPANYNAME, '')
+       OR NVL(dc.INDUSTRY, '')     <> NVL(cp.INDUSTRY, '')
+       OR NVL(dc.SECTOR, '')       <> NVL(cp.SECTOR, '')
+""")[0]
+
+print(f"[DIM_COMPANY T1]     {'✅' if company_mismatch == 0 else '⚠️'} Inconsistent: {company_mismatch}")
+
 
     print("\n==============================")
     print("Validation Completed")
