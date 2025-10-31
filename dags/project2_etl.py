@@ -499,30 +499,60 @@ def run_validation(file_name: str):
 
     for stmt in statements:
         print(f"\nRunning validation statement:\n{stmt}\n{'-'*80}")
-        cursor.execute(stmt)
-        results = cursor.fetchall()
-        col_names = [desc[0] for desc in cursor.description]
+        try:
+            cursor.execute(stmt)
+            results = cursor.fetchall()
+            col_names = [desc[0] for desc in cursor.description]
+            
+            print(f"Results: {len(results)} row(s)")
+            for idx, row in enumerate(results):
+                row_dict = dict(zip(col_names, row))
+                print(f"  Row {idx + 1}: {row_dict}")
 
-        # Evaluate each result row
-        for row in results:
-            row_dict = dict(zip(col_names, row))
-            for val in row_dict.values():
-                if (isinstance(val, str) and val.strip().upper() == "FAIL") or (
-                    isinstance(val, (int, float)) and val > 0
-                ):
-                    fail_rows.append({
-                        "statement": stmt[:60] + ("..." if len(stmt) > 60 else ""),
-                        "row": row_dict
-                    })
-                    break
+            # Evaluate each result row
+            for row in results:
+                row_dict = dict(zip(col_names, row))
+                for col_name, val in row_dict.items():
+                    # Check for FAIL string
+                    if isinstance(val, str) and val.strip().upper() == "FAIL":
+                        fail_rows.append({
+                            "statement": stmt[:100] + ("..." if len(stmt) > 100 else ""),
+                            "check_column": col_name,
+                            "row": row_dict
+                        })
+                        break
+                    # Check for issues count > 0 (skip NULL values)
+                    elif val is not None and isinstance(val, (int, float)) and val > 0:
+                        fail_rows.append({
+                            "statement": stmt[:100] + ("..." if len(stmt) > 100 else ""),
+                            "check_column": col_name,
+                            "row": row_dict
+                        })
+                        break
+        except Exception as e:
+            print(f"ERROR executing statement: {str(e)}")
+            fail_rows.append({
+                "statement": stmt[:100] + ("..." if len(stmt) > 100 else ""),
+                "error": str(e)
+            })
 
     cursor.close()
     conn.close()
 
     if fail_rows:
-        raise AirflowException(
-            f"Validation failed in {file_name}. Problem rows:\n{fail_rows}"
-        )
+        error_msg = f"Validation failed in {file_name}.\n"
+        error_msg += f"Found {len(fail_rows)} issue(s):\n"
+        for idx, fail in enumerate(fail_rows, 1):
+            error_msg += f"\n  Issue {idx}:\n"
+            if "error" in fail:
+                error_msg += f"    SQL Error: {fail['error']}\n"
+            if "check_column" in fail:
+                error_msg += f"    Failed Column: {fail['check_column']}\n"
+            if "statement" in fail:
+                error_msg += f"    Statement: {fail['statement']}\n"
+            if "row" in fail:
+                error_msg += f"    Result: {fail['row']}\n"
+        raise AirflowException(error_msg)
     else:
         print(f"{file_name} passed all validation checks.")
 
