@@ -319,7 +319,7 @@ compared AS (
       ON UPPER(h.SYMBOL) = UPPER(s.symbol)
     JOIN fact_market_daily f
       ON s.symbol_ID = f.symbol_ID
-     AND TO_NUMBER(TO_CHAR(h.DATE, 'YYYYMMDD')) = f.date_ID
+     AND TRY_TO_DATE(h.DATE) = f.TRADE_DATE
     WHERE
         ABS(h.OPEN     - f.open)     > 1e-8 OR
         ABS(h.HIGH     - f.high)     > 1e-8 OR
@@ -334,7 +334,7 @@ total_sample AS (
     JOIN dim_symbol s ON UPPER(h.SYMBOL) = UPPER(s.symbol)
     JOIN fact_market_daily f
       ON s.symbol_ID = f.symbol_ID
-     AND TO_NUMBER(TO_CHAR(h.DATE, 'YYYYMMDD')) = f.date_ID
+     AND TRY_TO_DATE(h.DATE) = f.TRADE_DATE
 )
 SELECT
     (SELECT COUNT(*) FROM compared)  AS mismatched_rows,
