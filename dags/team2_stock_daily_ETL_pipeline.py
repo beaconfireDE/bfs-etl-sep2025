@@ -256,7 +256,7 @@ def validate_integrity():
     print("Validation Report:")
     print("==============================\n")
 
-    # 1️⃣ DIM_SYMBOL
+    # 1️ DIM_SYMBOL
     copy_total, copy_distinct, dim_rows = q(f"""
         SELECT 
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_SYMBOLS_TEAM2),
@@ -266,7 +266,7 @@ def validate_integrity():
     result_symbol = "✅Consistent" if copy_distinct == dim_rows else "⚠️Inconsistent"
     print(f"[DIM_SYMBOL]\nCOPY SYMBOL Total Rows: {copy_total}, Distinct Rows: {copy_distinct}, DIM SYMBOL Rows: {dim_rows} → {result_symbol}\n")
 
-    # 2️⃣ DIM_COMPANY
+    # 2️ DIM_COMPANY
     copy_total, copy_distinct, dim_rows = q(f"""
         SELECT 
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2),
@@ -276,7 +276,7 @@ def validate_integrity():
     result_company = "✅Consistent" if copy_distinct == dim_rows else "⚠️Inconsistent"
     print(f"[DIM_COMPANY]\nCOPY COMPANY Total Rows: {copy_total}, Distinct Rows: {copy_distinct}, DIM COMPANY Rows: {dim_rows} → {result_company}\n")
 
-    # 3️⃣ DIM_DATE
+    # 3️ DIM_DATE
     copy_dates, dim_dates, copy_max, dim_max = q(f"""
         SELECT 
           (SELECT COUNT(DISTINCT DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -287,7 +287,7 @@ def validate_integrity():
     result_date = "✅Complete Coverage" if dim_dates >= copy_dates else "⚠️Missing Dates"
     print(f"[DIM_DATE]\nCOPY Unique Dates: {copy_dates}, DIM Date Rows: {dim_dates}\nMaximum Date: COPY={copy_max}, DIM={dim_max} → {result_date}\n")
 
-    # 4️⃣ FACT_STOCK_DAILY
+    # 4️ FACT_STOCK_DAILY
     copy_total, copy_distinct, fact_rows = q(f"""
         SELECT
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -300,7 +300,7 @@ def validate_integrity():
 
     print("\n========== DATA INTEGRITY REPORT ==========\n")
 
-    # 1️⃣ Foreign Key Integrity
+    # 1️ Foreign Key Integrity
     missing_symbol_fk = q(f"""
       SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
       LEFT JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s ON f.SYMBOL_ID = s.SYMBOL_ID
@@ -315,14 +315,14 @@ def validate_integrity():
     """)[0]
     print(f"[FK FACT→DIM_DATE]   {'✅' if missing_date_fk==0 else '⚠️'} Missing: {missing_date_fk}")
 
-    # 2️⃣ Uniqueness
+    # 2️ Uniqueness
     dup_keys = q(f"""
       SELECT COUNT(*) - COUNT(DISTINCT SYMBOL_ID || '-' || DATE_ID)
       FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
     """)[0]
     print(f"[UNIQUENESS FACT PK] {'✅' if dup_keys==0 else '⚠️'} Duplicate Primary Keys: {dup_keys}")
 
-    # 3️⃣ Null Checks
+    # 3️ Null Checks
     nulls = q(f"""
       SELECT
         COUNT_IF(SYMBOL_ID IS NULL),
@@ -332,7 +332,7 @@ def validate_integrity():
     """)
     print(f"[NOT NULL Checks]    SYMBOL_ID={nulls[0]}, DATE_ID={nulls[1]}, CLOSE={nulls[2]} → {'✅' if sum(nulls)==0 else '⚠️'}")
 
-    # 4️⃣ Value Range Sanity
+    # 4️ Value Range Sanity
     sanity = q(f"""
       SELECT
         COUNT_IF(OPEN < 0 OR HIGH < 0 OR LOW < 0 OR CLOSE < 0),
@@ -343,7 +343,7 @@ def validate_integrity():
     ok = (sanity[0]==0 and sanity[1]==0 and sanity[2]==0)
     print(f"[VALUE Sanity]       neg_price={sanity[0]}, neg_vol={sanity[1]}, high<low={sanity[2]} → {'✅' if ok else '⚠️'}")
 
-    # 5️⃣ Freshness
+    # 5️ Freshness
     freshness = q(f"""
       SELECT
         (SELECT MAX(DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -354,7 +354,7 @@ def validate_integrity():
     """)
     print(f"[FRESHNESS]          src_max={freshness[0]}, dim_max={freshness[1]}, fact_max={freshness[2]} → {'✅' if freshness[2] is not None else '⚠️'}")
 
-    # 6️⃣ Date Coverage
+    # 6️ Date Coverage
     miss_dates = q(f"""
       SELECT COUNT(*) FROM (
         SELECT DISTINCT DATE FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2
@@ -363,7 +363,7 @@ def validate_integrity():
     """)[0]
     print(f"[DATE Coverage]      missing_in_dim={miss_dates} → {'✅' if miss_dates==0 else '⚠️'}")
 
-    # 7️⃣ DIM_COMPANY Type-1 Consistency
+    # 7️ DIM_COMPANY Type-1 Consistency
     company_mismatch = q(f"""
       WITH latest_profile AS (
         SELECT t.* FROM (
