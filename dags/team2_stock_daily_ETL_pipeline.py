@@ -242,7 +242,6 @@ with DAG(
 
 
 
-
 # 6): Data Validation Task —— Check the number of rows in the dimension table and fact table, and the date range
 def validate_integrity():
     hook = SnowflakeHook(snowflake_conn_id="snowflake_conn")
@@ -257,55 +256,51 @@ def validate_integrity():
     print("Validation Report:")
     print("==============================\n")
 
-    # 1️ DIM_SYMBOL
-    cur.execute(f"""
+    # 1️⃣ DIM_SYMBOL
+    copy_total, copy_distinct, dim_rows = q(f"""
         SELECT 
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_SYMBOLS_TEAM2),
           (SELECT COUNT(DISTINCT SYMBOL) FROM {DB}.{SCHEMA}.COPY_SYMBOLS_TEAM2),
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2)
     """)
-    copy_total, copy_distinct, dim_rows = cur.fetchone()
     result_symbol = "✅Consistent" if copy_distinct == dim_rows else "⚠️Inconsistent"
     print(f"[DIM_SYMBOL]\nCOPY SYMBOL Total Rows: {copy_total}, Distinct Rows: {copy_distinct}, DIM SYMBOL Rows: {dim_rows} → {result_symbol}\n")
 
-    # 2️ DIM_COMPANY
-    cur.execute(f"""
+    # 2️⃣ DIM_COMPANY
+    copy_total, copy_distinct, dim_rows = q(f"""
         SELECT 
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2),
           (SELECT COUNT(DISTINCT SYMBOL) FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2),
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2)
     """)
-    copy_total, copy_distinct, dim_rows = cur.fetchone()
     result_company = "✅Consistent" if copy_distinct == dim_rows else "⚠️Inconsistent"
     print(f"[DIM_COMPANY]\nCOPY COMPANY Total Rows: {copy_total}, Distinct Rows: {copy_distinct}, DIM COMPANY Rows: {dim_rows} → {result_company}\n")
 
-    # 3️ DIM_DATE
-    cur.execute(f"""
+    # 3️⃣ DIM_DATE
+    copy_dates, dim_dates, copy_max, dim_max = q(f"""
         SELECT 
           (SELECT COUNT(DISTINCT DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2),
           (SELECT MAX(DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
           (SELECT MAX(FULL_DATE) FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2)
     """)
-    copy_dates, dim_dates, copy_max, dim_max = cur.fetchone()
     result_date = "✅Complete Coverage" if dim_dates >= copy_dates else "⚠️Missing Dates"
     print(f"[DIM_DATE]\nCOPY Unique Dates: {copy_dates}, DIM Date Rows: {dim_dates}\nMaximum Date: COPY={copy_max}, DIM={dim_max} → {result_date}\n")
 
-    # 4️ FACT_STOCK_DAILY
-    cur.execute(f"""
+    # 4️⃣ FACT_STOCK_DAILY
+    copy_total, copy_distinct, fact_rows = q(f"""
         SELECT
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
           (SELECT COUNT(DISTINCT SYMBOL || TO_VARCHAR(DATE)) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
           (SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2)
     """)
-    copy_total, copy_distinct, fact_rows = cur.fetchone()
     duplicate_rows = copy_total - copy_distinct
     result_fact = "✅Consistent" if fact_rows == copy_distinct else "⚠️Inconsistent"
     print(f"[FACT_STOCK_DAILY]\nCOPY Total Rows: {copy_total}, Distinct Rows: {copy_distinct}, FACT Rows: {fact_rows}, Duplicate Rows: {duplicate_rows} → {result_fact}\n")
 
     print("\n========== DATA INTEGRITY REPORT ==========\n")
 
-    # 1️ Foreign Key Integrity
+    # 1️⃣ Foreign Key Integrity
     missing_symbol_fk = q(f"""
       SELECT COUNT(*) FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
       LEFT JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s ON f.SYMBOL_ID = s.SYMBOL_ID
@@ -318,16 +313,16 @@ def validate_integrity():
       LEFT JOIN {DB}.{SCHEMA}.DIM_DATE_TEAM2 d ON f.DATE_ID = d.DATE_ID
       WHERE d.DATE_ID IS NULL
     """)[0]
-    print(f"[FK FACT→DIM_DATE]   {'✅' if missing_date_fk==0 else '⚠️'} 缺失: {missing_date_fk}")
+    print(f"[FK FACT→DIM_DATE]   {'✅' if missing_date_fk==0 else '⚠️'} Missing: {missing_date_fk}")
 
-    # 2️ Uniqueness
+    # 2️⃣ Uniqueness
     dup_keys = q(f"""
       SELECT COUNT(*) - COUNT(DISTINCT SYMBOL_ID || '-' || DATE_ID)
       FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
     """)[0]
     print(f"[UNIQUENESS FACT PK] {'✅' if dup_keys==0 else '⚠️'} Duplicate Primary Keys: {dup_keys}")
 
-    # 3️ Null Checks
+    # 3️⃣ Null Checks
     nulls = q(f"""
       SELECT
         COUNT_IF(SYMBOL_ID IS NULL),
@@ -337,7 +332,7 @@ def validate_integrity():
     """)
     print(f"[NOT NULL Checks]    SYMBOL_ID={nulls[0]}, DATE_ID={nulls[1]}, CLOSE={nulls[2]} → {'✅' if sum(nulls)==0 else '⚠️'}")
 
-    # 4️ Value Range Sanity
+    # 4️⃣ Value Range Sanity
     sanity = q(f"""
       SELECT
         COUNT_IF(OPEN < 0 OR HIGH < 0 OR LOW < 0 OR CLOSE < 0),
@@ -348,7 +343,7 @@ def validate_integrity():
     ok = (sanity[0]==0 and sanity[1]==0 and sanity[2]==0)
     print(f"[VALUE Sanity]       neg_price={sanity[0]}, neg_vol={sanity[1]}, high<low={sanity[2]} → {'✅' if ok else '⚠️'}")
 
-    # 5️ Freshness
+    # 5️⃣ Freshness
     freshness = q(f"""
       SELECT
         (SELECT MAX(DATE) FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
@@ -359,7 +354,7 @@ def validate_integrity():
     """)
     print(f"[FRESHNESS]          src_max={freshness[0]}, dim_max={freshness[1]}, fact_max={freshness[2]} → {'✅' if freshness[2] is not None else '⚠️'}")
 
-    # 6️ Date Coverage
+    # 6️⃣ Date Coverage
     miss_dates = q(f"""
       SELECT COUNT(*) FROM (
         SELECT DISTINCT DATE FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2
@@ -368,7 +363,7 @@ def validate_integrity():
     """)[0]
     print(f"[DATE Coverage]      missing_in_dim={miss_dates} → {'✅' if miss_dates==0 else '⚠️'}")
 
-    # 7️ DIM_COMPANY Consistent with the latest company profile (Type-1)
+    # 7️⃣ DIM_COMPANY Type-1 Consistency
     company_mismatch = q(f"""
       WITH latest_profile AS (
         SELECT t.* FROM (
@@ -392,6 +387,7 @@ def validate_integrity():
 
     cur.close()
     conn.close()
+
 
 
 # Airflow Task Node
