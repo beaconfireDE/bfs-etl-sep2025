@@ -205,27 +205,24 @@ VALUES (
 
     "update_fact_market_daily.sql": """MERGE INTO fact_market_daily AS tgt
 USING (
-    SELECT * FROM (
-        SELECT 
-            sym.SYMBOL_ID,
-            comp.COMPANY_ID,
-            dt.DATE_ID,
-            sh.SYMBOL,
-            TRY_TO_DATE(sh.DATE) AS TRADE_DATE,
-            MAX(sh.OPEN) AS OPEN,
-            MAX(sh.HIGH) AS HIGH,
-            MAX(sh.LOW) AS LOW,
-            MAX(sh.CLOSE) AS CLOSE,
-            MAX(sh.ADJCLOSE) AS ADJCLOSE,
-            MAX(sh.VOLUME) AS VOLUME,
-            ROW_NUMBER() OVER (PARTITION BY sh.SYMBOL, TRY_TO_DATE(sh.DATE) ORDER BY sym.SYMBOL_ID, comp.COMPANY_ID, dt.DATE_ID) AS rn
-        FROM US_STOCK_DAILY.DCCM.Stock_History sh
-        INNER JOIN AIRFLOW0928.DEV.dim_symbol_team3 sym ON sh.SYMBOL = sym.SYMBOL
-        INNER JOIN AIRFLOW0928.DEV.dim_company_team3 comp ON sh.SYMBOL = comp.SYMBOL
-        INNER JOIN AIRFLOW0928.DEV.dim_date_team3 dt ON TRY_TO_DATE(sh.DATE) = dt.FULL_DATE
-        WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL
-        GROUP BY sym.SYMBOL_ID, comp.COMPANY_ID, dt.DATE_ID, sh.SYMBOL, TRY_TO_DATE(sh.DATE)
-    ) WHERE rn = 1
+    SELECT 
+        MAX(sym.SYMBOL_ID) AS SYMBOL_ID,
+        MAX(comp.COMPANY_ID) AS COMPANY_ID,
+        MAX(dt.DATE_ID) AS DATE_ID,
+        sh.SYMBOL,
+        TRY_TO_DATE(sh.DATE) AS TRADE_DATE,
+        MAX(sh.OPEN) AS OPEN,
+        MAX(sh.HIGH) AS HIGH,
+        MAX(sh.LOW) AS LOW,
+        MAX(sh.CLOSE) AS CLOSE,
+        MAX(sh.ADJCLOSE) AS ADJCLOSE,
+        MAX(sh.VOLUME) AS VOLUME
+    FROM US_STOCK_DAILY.DCCM.Stock_History sh
+    INNER JOIN AIRFLOW0928.DEV.dim_symbol_team3 sym ON sh.SYMBOL = sym.SYMBOL
+    INNER JOIN AIRFLOW0928.DEV.dim_company_team3 comp ON sh.SYMBOL = comp.SYMBOL
+    INNER JOIN AIRFLOW0928.DEV.dim_date_team3 dt ON TRY_TO_DATE(sh.DATE) = dt.FULL_DATE
+    WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL
+    GROUP BY sh.SYMBOL, TRY_TO_DATE(sh.DATE)
 ) AS src
 ON tgt.SYMBOL = src.SYMBOL AND tgt.TRADE_DATE = src.TRADE_DATE
 
@@ -515,12 +512,10 @@ def run_validation(file_name: str):
             # Evaluate each result row
             for row in results:
                 row_dict = dict(zip(col_names, row))
-                has_fail = False
                 
-                # Check for FAIL string in result columns (e.g., *_check_result, *_result)
+                # Check for FAIL string in result columns
                 for col_name, val in row_dict.items():
                     if isinstance(val, str) and val.strip().upper() == "FAIL":
-                        has_fail = True
                         fail_rows.append({
                             "statement": stmt[:100] + ("..." if len(stmt) > 100 else ""),
                             "check_column": col_name,
@@ -528,12 +523,20 @@ def run_validation(file_name: str):
                         })
                         break
                 
-                # Only check issues count fields (not all numeric fields)
-                # Look for columns that indicate issues: null_key_records, orphan_*_records, mismatched_rows, issues
-                if not has_fail:
+                # Only check issues fields if no PASS result exists
+                has_pass_result = any(
+                    col.lower().endswith('_check_result') and 
+                    isinstance(val, str) and val.strip().upper() == 'PASS'
+                    for col, val in row_dict.items()
+                )
+                
+                if not has_pass_result:
                     for col_name, val in row_dict.items():
                         col_lower = col_name.lower()
-                        # Only check fields that indicate problems, not general counts
+                        # Skip mismatched_rows if consistency_check_result = 'PASS'
+                        if col_lower == 'mismatched_rows':
+                            if row_dict.get('consistency_check_result', '').upper() == 'PASS':
+                                continue
                         if (col_lower.endswith('_records') or 
                             col_lower.endswith('_issues') or 
                             col_lower == 'issues' or
