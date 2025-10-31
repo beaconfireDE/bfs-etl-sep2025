@@ -20,7 +20,7 @@ with DAG(
     default_args=DEFAULT_ARGS,
     start_date=datetime(2025, 10, 24),
     schedule_interval="0 6 * * *",
-    catchup=False,
+    catchup=True,
     description="Daily incremental load from S3 to Snowflake table"
 ) as dag:
 
