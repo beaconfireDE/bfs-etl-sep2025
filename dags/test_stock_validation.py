@@ -259,227 +259,253 @@ with DAG(
     validate_data_sql = SnowflakeOperator(
     task_id="validate_integrity_sql",
     snowflake_conn_id=SNOWFLAKE_CONN_ID,
-    sql=f"""
-    -- 1) DIM_SYMBOL：PK 唯一、symbol 唯一、非空
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'DIM_SYMBOL_PK_UNIQUE',
-           IFF(COUNT(*) = COUNT(DISTINCT symbol_id), 'PASSED', 'FAILED'),
-           'symbol_id must be unique',
-           ABS(COUNT(*) - COUNT(DISTINCT symbol_id))
-    FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2;
+    sql=[
+        # ---------- 1) DIM_SYMBOL ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'DIM_SYMBOL_PK_UNIQUE',
+               IFF(COUNT(*) = COUNT(DISTINCT symbol_id), 'PASSED', 'FAILED'),
+               'symbol_id must be unique',
+               ABS(COUNT(*) - COUNT(DISTINCT symbol_id))
+        FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2;
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'DIM_SYMBOL_SYMBOL_UNIQUE',
+               IFF(COUNT(*) = COUNT(DISTINCT symbol), 'PASSED', 'FAILED'),
+               'symbol must be unique',
+               ABS(COUNT(*) - COUNT(DISTINCT symbol))
+        FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2;
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'DIM_SYMBOL_NOT_NULL',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'symbol must be NON-NULL/NON-EMPTY',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2
+        WHERE symbol IS NULL OR TRIM(symbol) = '';
+        """,
 
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'DIM_SYMBOL_SYMBOL_UNIQUE',
-           IFF(COUNT(*) = COUNT(DISTINCT symbol), 'PASSED', 'FAILED'),
-           'symbol must be unique',
-           ABS(COUNT(*) - COUNT(DISTINCT symbol))
-    FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2;
+        # ---------- 2) DIM_DATE ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'DIM_DATE_KEY_MATCH',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'date_id must equal TO_CHAR(full_date,''YYYYMMDD'')',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2
+        WHERE date_id <> TO_NUMBER(TO_CHAR(full_date,'YYYYMMDD'));
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        WITH d AS (
+          SELECT full_date, LAG(full_date) OVER (ORDER BY full_date) AS prev_d
+          FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2
+        )
+        SELECT 'DIM_DATE_GAPS',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'natural day gaps detected',
+               COUNT(*)
+        FROM d
+        WHERE prev_d IS NOT NULL AND DATEDIFF('day', prev_d, full_date) <> 1;
+        """,
 
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'DIM_SYMBOL_NOT_NULL',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'symbol must be NON-NULL/NON-EMPTY',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2
-    WHERE symbol IS NULL OR TRIM(symbol) = '';
+        # ---------- 3) DIM_COMPANY ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'DIM_COMPANY_SYMBOL_FK',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'DIM_COMPANY.symbol_id must exist in DIM_SYMBOL',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2 c
+        LEFT JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s
+          ON s.symbol_id = c.symbol_id
+        WHERE s.symbol_id IS NULL;
+        """,
 
-    -- 2) DIM_DATE：键一致、自然日连续
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'DIM_DATE_KEY_MATCH',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'date_id must equal TO_CHAR(full_date,''YYYYMMDD'')',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2
-    WHERE date_id <> TO_NUMBER(TO_CHAR(full_date,'YYYYMMDD'));
+        # ---------- 4) FACT：FK / 唯一 / 非空 / 非负 / OHLC ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'FACT_SYMBOL_FK',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'FACT.symbol_id must exist in DIM_SYMBOL',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
+        LEFT JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s
+          ON s.symbol_id = f.symbol_id
+        WHERE s.symbol_id IS NULL;
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'FACT_DATE_FK',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'FACT.date_id must exist in DIM_DATE',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
+        LEFT JOIN {DB}.{SCHEMA}.DIM_DATE_TEAM2 d
+          ON d.date_id = f.date_id
+        WHERE d.date_id IS NULL;
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'FACT_UNIQUENESS_BY_KEY',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'FACT must be unique by (symbol_id, date_id)',
+               COUNT(*)
+        FROM (
+          SELECT symbol_id, date_id
+          FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
+          GROUP BY 1,2
+          HAVING COUNT(*) > 1
+        );
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'FACT_NOT_NULLS',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'key/measures must be NOT NULL',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
+        WHERE symbol_id IS NULL OR date_id IS NULL
+           OR open IS NULL OR high IS NULL OR low IS NULL OR close IS NULL OR adjclose IS NULL;
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'FACT_NON_NEGATIVE',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'open/high/low/close/adjclose/volume must be >= 0',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
+        WHERE open < 0 OR high < 0 OR low < 0 OR close < 0 OR adjclose < 0 OR volume < 0;
+        """,
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        SELECT 'FACT_OHLC_CONSISTENCY',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'high >= GREATEST(open,close) AND low <= LEAST(open,close)',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
+        WHERE high < GREATEST(open, close) OR low > LEAST(open, close);
+        """,
 
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    WITH d AS (
-      SELECT full_date, LAG(full_date) OVER (ORDER BY full_date) AS prev_d
-      FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2
-    )
-   
-    SELECT 'DIM_DATE_GAPS',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'natural day gaps detected',
-           COUNT(*)
-    FROM d
-    WHERE prev_d IS NOT NULL AND DATEDIFF('day', prev_d, full_date) <> 1;
-    
+        # ---------- 5) 源↔目标：近 30 天行数对账 ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        WITH mx AS (SELECT MAX(date) AS mx FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
+        src AS (
+          SELECT symbol, TO_NUMBER(TO_CHAR(date,'YYYYMMDD')) AS date_id, COUNT(*) c
+          FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2
+          WHERE date >= DATEADD(day, -30, (SELECT mx FROM mx))
+          GROUP BY 1,2
+        ),
+        tgt AS (
+          SELECT s.symbol, f.date_id, COUNT(*) c
+          FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
+          JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s ON s.symbol_id = f.symbol_id
+          WHERE TO_DATE(TO_CHAR(f.date_id),'YYYYMMDD') >= DATEADD(day, -30, (SELECT mx FROM mx))
+          GROUP BY 1,2
+        ),
+        mm AS (
+          SELECT COALESCE(src.symbol,tgt.symbol) AS symbol,
+                 COALESCE(src.date_id,tgt.date_id) AS date_id,
+                 NVL(src.c,0) AS c_src,
+                 NVL(tgt.c,0) AS c_tgt
+          FROM src FULL OUTER JOIN tgt USING(symbol,date_id)
+        )
+        SELECT 'SRC_TGT_ROWCOUNT_30D',
+               IFF(SUM(IFF(c_src<>c_tgt,1,0))=0,'PASSED','FAILED'),
+               'rowcount by (symbol,date) in last 30 days',
+               SUM(IFF(c_src<>c_tgt,1,0))
+        FROM mm;
+        """,
 
-    -- 3) DIM_COMPANY 外键
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'DIM_COMPANY_SYMBOL_FK',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'DIM_COMPANY.symbol_id must exist in DIM_SYMBOL',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2 c
-    LEFT JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s
-      ON s.symbol_id = c.symbol_id
-    WHERE s.symbol_id IS NULL;
+        # ---------- 6) 近 7 天价格对账 ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        WITH mx AS (SELECT MAX(date) AS mx FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
+        j AS (
+          SELECT sh.symbol,
+                 TO_NUMBER(TO_CHAR(sh.date,'YYYYMMDD')) AS date_id,
+                 sh.close AS src_close,
+                 f.close  AS tgt_close
+          FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2 sh
+          JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s ON s.symbol = sh.symbol
+          JOIN {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
+            ON f.symbol_id = s.symbol_id
+           AND f.date_id   = TO_NUMBER(TO_CHAR(sh.date,'YYYYMMDD'))
+          WHERE sh.date >= DATEADD(day, -7, (SELECT mx FROM mx))
+        )
+        SELECT 'SRC_TGT_CLOSE_MATCH_7D',
+               IFF(COUNT_IF(ABS(src_close - tgt_close) > 1e-6)=0,'PASSED','WARN'),
+               'abs(src.close - fact.close) <= 1e-6 in last 7 days',
+               COUNT_IF(ABS(src_close - tgt_close) > 1e-6)
+        FROM j;
+        """,
 
-    -- 4) FACT：FK、复合键唯一、非空、非负、OHLC 关系
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'FACT_SYMBOL_FK',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'FACT.symbol_id must exist in DIM_SYMBOL',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
-    LEFT JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s
-      ON s.symbol_id = f.symbol_id
-    WHERE s.symbol_id IS NULL;
+        # ---------- 7) FACT 覆盖：最大日往回 7 天每天至少 1 行 ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        WITH mx AS (SELECT MAX(date_id) AS mx FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2),
+        rng AS (SELECT TO_DATE(TO_CHAR(mx),'YYYYMMDD') AS mx_d FROM mx),
+        span AS (SELECT DATEADD(day, -7, mx_d) AS start_d, mx_d AS end_d FROM rng),
+        cal AS (
+          SELECT DATEADD(day, ROW_NUMBER() OVER (ORDER BY SEQ4())-1, start_d) AS d
+          FROM span, TABLE(GENERATOR(ROWCOUNT => 400))
+          QUALIFY d <= end_d
+        ),
+        miss AS (
+          SELECT c.d
+          FROM cal c
+          LEFT JOIN {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
+            ON f.date_id = TO_NUMBER(TO_CHAR(c.d,'YYYYMMDD'))
+          GROUP BY c.d
+          HAVING COUNT(f.fact_id) = 0
+        )
+        SELECT 'FACT_COVERAGE_LAST_7D',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'at least 1 row per natural day in last 7 days',
+               COUNT(*)
+        FROM miss;
+        """,
 
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'FACT_DATE_FK',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'FACT.date_id must exist in DIM_DATE',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
-    LEFT JOIN {DB}.{SCHEMA}.DIM_DATE_TEAM2 d
-      ON d.date_id = f.date_id
-    WHERE d.date_id IS NULL;
+        # ---------- 8) DIM_COMPANY 与最新画像一致（Type-1） ----------
+        f"""
+        INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+        WITH latest_profile AS (
+          SELECT *
+          FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2
+          QUALIFY ROW_NUMBER() OVER (PARTITION BY SYMBOL ORDER BY ID DESC) = 1
+        )
+        SELECT 'DIM_COMPANY_T1_MATCH_LATEST',
+               IFF(COUNT(*)=0,'PASSED','FAILED'),
+               'DIM_COMPANY equals latest profile by symbol (name/industry/sector)',
+               COUNT(*)
+        FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2 dc
+        JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 ds ON ds.SYMBOL_ID = dc.SYMBOL_ID
+        JOIN latest_profile lp ON lp.SYMBOL = ds.SYMBOL
+        WHERE NVL(dc.COMPANY_NAME,'') <> NVL(lp.COMPANYNAME,'')
+           OR NVL(dc.INDUSTRY,'')     <> NVL(lp.INDUSTRY,'')
+           OR NVL(dc.SECTOR,'')       <> NVL(lp.SECTOR,'');
+        """,
 
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'FACT_UNIQUENESS_BY_KEY',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'FACT must be unique by (symbol_id, date_id)',
-           COUNT(*)
-    FROM (
-      SELECT symbol_id, date_id
-      FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
-      GROUP BY 1,2
-      HAVING COUNT(*) > 1
-    );
-
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'FACT_NOT_NULLS',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'key/measures must be NOT NULL',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
-    WHERE symbol_id IS NULL OR date_id IS NULL
-       OR open IS NULL OR high IS NULL OR low IS NULL OR close IS NULL OR adjclose IS NULL;
-
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'FACT_NON_NEGATIVE',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'open/high/low/close/adjclose/volume must be >= 0',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
-    WHERE open < 0 OR high < 0 OR low < 0 OR close < 0 OR adjclose < 0 OR volume < 0;
-
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'FACT_OHLC_CONSISTENCY',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'high >= GREATEST(open,close) AND low <= LEAST(open,close)',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2
-    WHERE high < GREATEST(open, close) OR low > LEAST(open, close);
-
-    -- 5) 源↔目标：最近 30 天 键行数一致
-    WITH mx AS (SELECT MAX(date) AS mx FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
-    src AS (
-      SELECT symbol, TO_NUMBER(TO_CHAR(date,'YYYYMMDD')) AS date_id, COUNT(*) c
-      FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2
-      WHERE date >= DATEADD(day, -30, (SELECT mx FROM mx))
-      GROUP BY 1,2
-    ),
-    tgt AS (
-      SELECT s.symbol, f.date_id, COUNT(*) c
-      FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
-      JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s ON s.symbol_id = f.symbol_id
-      WHERE TO_DATE(TO_CHAR(f.date_id),'YYYYMMDD') >= DATEADD(day, -30, (SELECT mx FROM mx))
-      GROUP BY 1,2
-    ),
-    mm AS (
-      SELECT COALESCE(src.symbol,tgt.symbol) AS symbol,
-             COALESCE(src.date_id,tgt.date_id) AS date_id,
-             NVL(src.c,0) AS c_src,
-             NVL(tgt.c,0) AS c_tgt
-      FROM src FULL OUTER JOIN tgt USING(symbol,date_id)
-    )
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'SRC_TGT_ROWCOUNT_30D',
-           IFF(SUM(IFF(c_src<>c_tgt,1,0))=0,'PASSED','FAILED'),
-           'rowcount by (symbol,date) in last 30 days',
-           SUM(IFF(c_src<>c_tgt,1,0))
-    FROM mm;
-
-    -- 6) 价格对账：最近 7 天 close 差异
-    WITH mx AS (SELECT MAX(date) AS mx FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2),
-    j AS (
-      SELECT sh.symbol,
-             TO_NUMBER(TO_CHAR(sh.date,'YYYYMMDD')) AS date_id,
-             sh.close AS src_close,
-             f.close  AS tgt_close
-      FROM {DB}.{SCHEMA}.COPY_STOCK_HISTORY_TEAM2 sh
-      JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 s ON s.symbol = sh.symbol
-      JOIN {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
-        ON f.symbol_id = s.symbol_id
-       AND f.date_id   = TO_NUMBER(TO_CHAR(sh.date,'YYYYMMDD'))
-      WHERE sh.date >= DATEADD(day, -7, (SELECT mx FROM mx))
-    )
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'SRC_TGT_CLOSE_MATCH_7D',
-           IFF(COUNT_IF(ABS(src_close - tgt_close) > 1e-6)=0,'PASSED','WARN'),
-           'abs(src.close - fact.close) <= 1e-6 in last 7 days',
-           COUNT_IF(ABS(src_close - tgt_close) > 1e-6)
-    FROM j;
-
-    -- 7) 回补覆盖：FACT 最大日往回 7 天，自然日每天至少有 1 行
-    WITH mx AS (SELECT MAX(date_id) AS mx FROM {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2),
-    rng AS (SELECT TO_DATE(TO_CHAR(mx),'YYYYMMDD') AS mx_d FROM mx),
-    span AS (SELECT DATEADD(day, -7, mx_d) AS start_d, mx_d AS end_d FROM rng),
-    cal AS (
-      SELECT DATEADD(day, ROW_NUMBER() OVER (ORDER BY SEQ4())-1, start_d) AS d
-      FROM span, TABLE(GENERATOR(ROWCOUNT => 400))
-      QUALIFY d <= end_d
-    ),
-    miss AS (
-      SELECT c.d
-      FROM cal c
-      LEFT JOIN {DB}.{SCHEMA}.FACT_STOCK_DAILY_TEAM2 f
-        ON f.date_id = TO_NUMBER(TO_CHAR(c.d,'YYYYMMDD'))
-      GROUP BY c.d
-      HAVING COUNT(f.fact_id) = 0
-    )
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'FACT_COVERAGE_LAST_7D',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'at least 1 row per natural day in last 7 days',
-           COUNT(*)
-    FROM miss;
-
-    -- 8) DIM_COMPANY 与最新公司画像一致（Type-1 规则）
-    WITH latest_profile AS (
-      SELECT *
-      FROM {DB}.{SCHEMA}.COPY_COMPANY_PROFILE_TEAM2
-      QUALIFY ROW_NUMBER() OVER (PARTITION BY SYMBOL ORDER BY ID DESC) = 1
-    )
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
-    SELECT 'DIM_COMPANY_T1_MATCH_LATEST',
-           IFF(COUNT(*)=0,'PASSED','FAILED'),
-           'DIM_COMPANY equals latest profile by symbol (name/industry/sector)',
-           COUNT(*)
-    FROM {DB}.{SCHEMA}.DIM_COMPANY_TEAM2 dc
-    JOIN {DB}.{SCHEMA}.DIM_SYMBOL_TEAM2 ds ON ds.SYMBOL_ID = dc.SYMBOL_ID
-    JOIN latest_profile lp ON lp.SYMBOL = ds.SYMBOL
-    WHERE NVL(dc.COMPANY_NAME,'') <> NVL(lp.COMPANYNAME,'')
-       OR NVL(dc.INDUSTRY,'')     <> NVL(lp.INDUSTRY,'')
-       OR NVL(dc.SECTOR,'')       <> NVL(lp.SECTOR,'');
-
-    -- 汇总失败数，有失败则让任务失败
-    SET failed_cnt = (
-      SELECT COUNT(*)
-      FROM {DB}.{SCHEMA}.DQ_RESULTS
-      WHERE check_time >= DATEADD(hour, -2, CURRENT_TIMESTAMP())
-        AND status = 'FAILED'
-    );
-    BEGIN
-      IF (:failed_cnt > 0) THEN
-        SELECT SYSTEM$RAISE_ERROR('DQ_FAILED: ' || :failed_cnt || ' checks failed');
-      END IF;
-    END;
-    """,
+        # ---------- 9) 若有 FAILED 则抛错 ----------
+        f"""
+        SET failed_cnt = (
+          SELECT COUNT(*)
+          FROM {DB}.{SCHEMA}.DQ_RESULTS
+          WHERE check_time >= DATEADD(hour, -2, CURRENT_TIMESTAMP())
+            AND status = 'FAILED'
+        );
+        """,
+        """
+        BEGIN
+          IF (:failed_cnt > 0) THEN
+            SELECT SYSTEM$RAISE_ERROR('DQ_FAILED: ' || :failed_cnt || ' checks failed');
+          END IF;
+        END;
+        """,
+    ],
 )
 
 
