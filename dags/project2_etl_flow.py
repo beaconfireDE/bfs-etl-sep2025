@@ -77,12 +77,12 @@ def run_dq_checks_log_only():
     results = {}
     with hook.get_conn() as conn:
         with conn.cursor() as cur:
-        	# Setting the environment for the cursor
-        	cur.execute(f"USE ROLE {SNOWFLAKE_ROLE}")
+            # Setting the environment for the cursor
+            cur.execute(f"USE ROLE {SNOWFLAKE_ROLE}")
 	        cur.execute(f"USE WAREHOUSE {SNOWFLAKE_WAREHOUSE}")
 	        cur.execute(f"USE DATABASE {SNOWFLAKE_DATABASE}")
 	        cur.execute(f"USE SCHEMA {SNOWFLAKE_SCHEMA}")
-	        
+            
             for name, q in sqls.items():
                 cur.execute(q)
                 cnt = cur.fetchone()[0]
