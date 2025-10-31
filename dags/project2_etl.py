@@ -444,6 +444,8 @@ def load_sql(file_name: str) -> str:
 # -------------------------------------------------------------------------
 # Generic Validation Checker
 # -------------------------------------------------------------------------
+
+'''
 def run_validation(file_name: str):
     """Execute validation SQL and fail DAG if any FAIL or issues > 0."""
     hook = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID)
@@ -472,6 +474,50 @@ def run_validation(file_name: str):
         raise AirflowException(f"Validation failed in {file_name}:\n{fail_rows}")
     else:
         print(f"{file_name} passed all data validation checks.")
+'''
+
+# new version: handle multi-statement SQL query 
+def run_validation(file_name: str):
+    """Execute one or more validation SQL statements and fail DAG if any FAIL or issues > 0."""
+    hook = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID)
+    conn = hook.get_conn()
+    cursor = conn.cursor()
+
+    sql_text = load_sql(file_name)
+
+    # Split SQL text by semicolon into individual statements
+    statements = [stmt.strip() for stmt in sql_text.split(';') if stmt.strip()]
+
+    fail_rows = []
+
+    for stmt in statements:
+        print(f"\nRunning validation statement:\n{stmt}\n{'-'*80}")
+        cursor.execute(stmt)
+        results = cursor.fetchall()
+        col_names = [desc[0] for desc in cursor.description]
+
+        # Evaluate each result row
+        for row in results:
+            row_dict = dict(zip(col_names, row))
+            for val in row_dict.values():
+                if (isinstance(val, str) and val.strip().upper() == "FAIL") or (
+                    isinstance(val, (int, float)) and val > 0
+                ):
+                    fail_rows.append({
+                        "statement": stmt[:60] + ("..." if len(stmt) > 60 else ""),
+                        "row": row_dict
+                    })
+                    break
+
+    cursor.close()
+    conn.close()
+
+    if fail_rows:
+        raise AirflowException(
+            f"Validation failed in {file_name}. Problem rows:\n{fail_rows}"
+        )
+    else:
+        print(f"{file_name} passed all validation checks.")
 
 # -----------------------------------------------------------------------------
 # DAG DEFINITION
