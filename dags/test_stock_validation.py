@@ -491,20 +491,17 @@ with DAG(
 
         # ---------- 9) 若有 FAILED 则抛错 ----------
        f"""
-       SET failed_cnt = (
-       SELECT COUNT(*)
+       DECLARE failed_cnt NUMBER;
+       BEGIN
+       SELECT COUNT(*) INTO :failed_cnt
        FROM {DB}.{SCHEMA}.DQ_RESULTS
        WHERE check_time >= DATEADD(hour, -2, CURRENT_TIMESTAMP())
-       AND status = 'FAILED'
-       );
-       """,
-       """
-       -- 如果 >0 就触发报错，否则返回 OK（不会中断）
-       SELECT IFF(
-       $failed_cnt > 0,
-       SYSTEM$RAISE_ERROR('DQ_FAILED: ' || $failed_cnt || ' checks failed'),
-       'ALL CHECKS PASSED'
-       );
+       AND status = 'FAILED';
+
+       IF (failed_cnt > 0) THEN
+       RAISE STATEMENT_ERROR WITH MESSAGE = 'DQ_FAILED: ' || failed_cnt || ' checks failed';
+       END IF;
+       END;
        """
     ],
 )
