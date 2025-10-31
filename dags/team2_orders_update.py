@@ -19,7 +19,7 @@ with DAG(
     dag_id="team2_orders_incremental_copy",
     default_args=DEFAULT_ARGS,
     start_date=datetime(2025, 10, 31),
-    schedule_interval=None,   # 手动运行，或者改成 "0 6 * * *" 每天跑
+    schedule_interval=None,   
     catchup=False,
     description="Incrementally load new Team2 files from S3 stage into Snowflake"
 ) as dag:
@@ -35,7 +35,7 @@ with DAG(
                 FIELD_OPTIONALLY_ENCLOSED_BY='"'
                 SKIP_HEADER=1
             )
-            PATTERN = '.*orders_team2_.*\\.csv'  -- ✅ 只加载Team2文件
+            PATTERN = '.*orders_team2_.*\\.csv'  -- ✅ only Team2
             ON_ERROR = 'CONTINUE';
         """,
     )
