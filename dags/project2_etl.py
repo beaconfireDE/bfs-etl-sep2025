@@ -205,24 +205,27 @@ VALUES (
 
     "update_fact_market_daily.sql": """MERGE INTO fact_market_daily AS tgt
 USING (
-    SELECT 
-        sym.SYMBOL_ID,
-        comp.COMPANY_ID,
-        dt.DATE_ID,
-        sh.SYMBOL,
-        TRY_TO_DATE(sh.DATE) AS TRADE_DATE,
-        MAX(sh.OPEN) AS OPEN,
-        MAX(sh.HIGH) AS HIGH,
-        MAX(sh.LOW) AS LOW,
-        MAX(sh.CLOSE) AS CLOSE,
-        MAX(sh.ADJCLOSE) AS ADJCLOSE,
-        MAX(sh.VOLUME) AS VOLUME
-    FROM US_STOCK_DAILY.DCCM.Stock_History sh
-    LEFT JOIN AIRFLOW0928.DEV.dim_symbol_team3 sym ON sh.SYMBOL = sym.SYMBOL
-    LEFT JOIN AIRFLOW0928.DEV.dim_company_team3 comp ON sh.SYMBOL = comp.SYMBOL
-    LEFT JOIN AIRFLOW0928.DEV.dim_date_team3 dt ON TRY_TO_DATE(sh.DATE) = dt.FULL_DATE
-    WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL
-    GROUP BY sym.SYMBOL_ID, comp.COMPANY_ID, dt.DATE_ID, sh.SYMBOL, TRY_TO_DATE(sh.DATE)
+    SELECT * FROM (
+        SELECT 
+            sym.SYMBOL_ID,
+            comp.COMPANY_ID,
+            dt.DATE_ID,
+            sh.SYMBOL,
+            TRY_TO_DATE(sh.DATE) AS TRADE_DATE,
+            MAX(sh.OPEN) AS OPEN,
+            MAX(sh.HIGH) AS HIGH,
+            MAX(sh.LOW) AS LOW,
+            MAX(sh.CLOSE) AS CLOSE,
+            MAX(sh.ADJCLOSE) AS ADJCLOSE,
+            MAX(sh.VOLUME) AS VOLUME,
+            ROW_NUMBER() OVER (PARTITION BY sh.SYMBOL, TRY_TO_DATE(sh.DATE) ORDER BY sym.SYMBOL_ID, comp.COMPANY_ID, dt.DATE_ID) AS rn
+        FROM US_STOCK_DAILY.DCCM.Stock_History sh
+        INNER JOIN AIRFLOW0928.DEV.dim_symbol_team3 sym ON sh.SYMBOL = sym.SYMBOL
+        INNER JOIN AIRFLOW0928.DEV.dim_company_team3 comp ON sh.SYMBOL = comp.SYMBOL
+        INNER JOIN AIRFLOW0928.DEV.dim_date_team3 dt ON TRY_TO_DATE(sh.DATE) = dt.FULL_DATE
+        WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL
+        GROUP BY sym.SYMBOL_ID, comp.COMPANY_ID, dt.DATE_ID, sh.SYMBOL, TRY_TO_DATE(sh.DATE)
+    ) WHERE rn = 1
 ) AS src
 ON tgt.SYMBOL = src.SYMBOL AND tgt.TRADE_DATE = src.TRADE_DATE
 
