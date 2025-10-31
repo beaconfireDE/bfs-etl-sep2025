@@ -264,7 +264,11 @@ SELECT
     (SELECT COUNT(*) FROM fact_market_daily) AS target_count,
     (SELECT COUNT(DISTINCT sh.SYMBOL, TRY_TO_DATE(sh.DATE))
      FROM US_STOCK_DAILY.DCCM.Stock_History sh
-     WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL) AS source_count,
+     WHERE TRY_TO_DATE(sh.DATE) IS NOT NULL
+       AND sh.OPEN >= 0 AND sh.HIGH >= 0 AND sh.LOW >= 0 AND sh.CLOSE >= 0 AND sh.ADJCLOSE >= 0
+       AND sh.HIGH >= sh.LOW
+       AND sh.HIGH >= sh.OPEN AND sh.HIGH >= sh.CLOSE
+       AND sh.LOW <= sh.OPEN AND sh.LOW <= sh.CLOSE) AS source_count,
     CASE 
         WHEN ABS(target_count - source_count) <= 0 THEN 'PASS'
         ELSE 'FAIL'
