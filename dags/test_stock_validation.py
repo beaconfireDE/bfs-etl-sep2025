@@ -292,17 +292,19 @@ with DAG(
     FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2
     WHERE date_id <> TO_NUMBER(TO_CHAR(full_date,'YYYYMMDD'));
 
+    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
     WITH d AS (
       SELECT full_date, LAG(full_date) OVER (ORDER BY full_date) AS prev_d
       FROM {DB}.{SCHEMA}.DIM_DATE_TEAM2
     )
-    INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
+   
     SELECT 'DIM_DATE_GAPS',
            IFF(COUNT(*)=0,'PASSED','FAILED'),
            'natural day gaps detected',
            COUNT(*)
     FROM d
     WHERE prev_d IS NOT NULL AND DATEDIFF('day', prev_d, full_date) <> 1;
+    
 
     -- 3) DIM_COMPANY 外键
     INSERT INTO {DB}.{SCHEMA}.DQ_RESULTS (check_name, status, details, failed_count)
