@@ -28,7 +28,7 @@ TEAM_SUFFIX = "_team3"
 # SQL Statements - Embedded in Python file
 # -----------------------------------------------------------------------------
 SQL_STATEMENTS = {
-    "create_dim_company.sql": """CREATE TABLE IF NOT EXISTS dim_company (
+    "create_dim_company.sql": """CREATE OR REPLACE TABLE dim_company (
     COMPANY_ID            NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
     ID                     NUMBER(38,0),
     SYMBOL                 VARCHAR(20),
@@ -51,7 +51,7 @@ SQL_STATEMENTS = {
     LOAD_TS                TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );""",
 
-    "create_dim_date.sql": """CREATE TABLE IF NOT EXISTS dim_date (
+    "create_dim_date.sql": """CREATE OR REPLACE TABLE dim_date (
     DATE_ID               NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
     FULL_DATE              DATE,
     YEAR                   NUMBER(4,0),
@@ -65,7 +65,7 @@ SQL_STATEMENTS = {
     LOAD_TS                TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );""",
 
-    "create_dim_symbol.sql": """CREATE TABLE IF NOT EXISTS dim_symbol (
+    "create_dim_symbol.sql": """CREATE OR REPLACE TABLE dim_symbol (
     SYMBOL_ID             NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
     SYMBOL                 VARCHAR(20),
     NAME                   VARCHAR(200),
@@ -73,7 +73,7 @@ SQL_STATEMENTS = {
     LOAD_TS                TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );""",
 
-    "create_fact_market_daily.sql": """CREATE TABLE IF NOT EXISTS fact_market_daily (
+    "create_fact_market_daily.sql": """CREATE OR REPLACE TABLE fact_market_daily (
     FACT_ID               NUMBER(38,0) AUTOINCREMENT START 1 INCREMENT 1 PRIMARY KEY,
     SYMBOL_ID             NUMBER(38,0),
     COMPANY_ID            NUMBER(38,0),
