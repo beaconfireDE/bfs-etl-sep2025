@@ -1,6 +1,8 @@
 from airflow import DAG
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 from datetime import datetime
+from airflow.operators.python import PythonOperator
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
 # Adding configs
 SNOWFLAKE_CONN_ID = 'snowflake_conn'
@@ -24,6 +26,58 @@ TABLE_DIMDATE = 'dim_date_team1'
 TABLE_DIMCOM = 'dim_company_team1'
 TABLE_DIMSYM = 'dim_symbol_team1'
 TABLE_FACTPRICE = 'fact_daily_price_team1'
+
+
+'''Define function to run sanity checks later'''
+def run_dq_checks_log_only():
+    hook = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID)
+    sqls = {
+        "dup_fact_key": """
+            select count(*) 
+            from (
+              select symbol, datekey, count(*) as c
+              from fact_daily_price_team1
+              group by 1,2
+              having count(*) > 1
+            )
+        """,
+        "orphan_date": """
+            select count(*)
+            from fact_daily_price_team1 f
+            left join dim_date_team1 d on d.datekey = f.datekey
+            where d.datekey is null
+        """,
+        "orphan_symbol": """
+            select count(*)
+            from fact_daily_price_team1 f
+            left join dim_symbol_team1 s on s.symbol = f.symbol
+            where s.symbol is null
+        """,
+        "ohlc_sanity": """
+            select count(*)
+            from fact_daily_price_team1
+            where volume < 0
+               or low   > least(open, close)
+               or high  < greatest(open, close)
+               or low   > high
+        """,
+    }
+
+    results = {}
+    with hook.get_conn() as conn:
+        with conn.cursor() as cur:
+            for name, q in sqls.items():
+                cur.execute(q)
+                cnt = cur.fetchone()[0]
+                results[name] = cnt
+
+    # log results 
+    print("=== Data Quality Check Results ===")
+    for name, cnt in results.items():
+        print(f"{name}: {cnt} issues found")
+
+    
+    return results
 
 # Setting up DAG
 with DAG(
@@ -303,56 +357,63 @@ with DAG(
 		"""
 	)
 
-	sanity_duplicates = SnowflakeOperator(
-		task_id="sanity_duplicates",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
-        sql=f"""
-        select count(*) as num_duplicates
-		from
-		(select symbol, datekey, count(*) as cnt
-		from {TABLE_FACTPRICE}
-		group by symbol, datekey
-		having count(*) > 1);
-		"""
+	# sanity_duplicates = SnowflakeOperator(
+	# 	task_id="sanity_duplicates",
+    #     warehouse=SNOWFLAKE_WAREHOUSE,
+    #     database=SNOWFLAKE_DATABASE,
+    #     schema=SNOWFLAKE_SCHEMA,
+    #     role=SNOWFLAKE_ROLE,
+    #     snowflake_conn_id=SNOWFLAKE_CONN_ID,
+    #     sql=f"""
+    #     select count(*) as num_duplicates
+	# 	from
+	# 	(select symbol, datekey, count(*) as cnt
+	# 	from {TABLE_FACTPRICE}
+	# 	group by symbol, datekey
+	# 	having count(*) > 1);
+	# 	"""
+	# )
+
+	# sanity_miss_date = SnowflakeOperator(
+	# 	task_id="sanity_miss_date",
+    #     warehouse=SNOWFLAKE_WAREHOUSE,
+    #     database=SNOWFLAKE_DATABASE,
+    #     schema=SNOWFLAKE_SCHEMA,
+    #     role=SNOWFLAKE_ROLE,
+    #     snowflake_conn_id=SNOWFLAKE_CONN_ID,
+    #     sql=f"""
+    #     select count(*) as num_missing_dates
+	# 	from
+	# 	(select f.symbol, f.datekey
+	# 	from {TABLE_FACTPRICE} f
+	# 	left join {TABLE_DIMDATE} d on d.datekey = f.datekey
+	# 	where d.datekey is null);
+	# 	"""
+	# )	
+
+	# sanity_miss_symbol = SnowflakeOperator(
+	# 	task_id="sanity_miss_symbol",
+    #     warehouse=SNOWFLAKE_WAREHOUSE,
+    #     database=SNOWFLAKE_DATABASE,
+    #     schema=SNOWFLAKE_SCHEMA,
+    #     role=SNOWFLAKE_ROLE,
+    #     snowflake_conn_id=SNOWFLAKE_CONN_ID,
+    #     sql=f"""
+    #     select count(*) as num_missing_symbols
+	# 	from
+	# 	(select f.symbol, f.datekey
+	# 	from {TABLE_FACTPRICE} f
+	# 	left join {TABLE_DIMSYM} s on s.symbol = f.symbol
+	# 	where s.symbol is null);
+	# 	"""
+	# )	
+
+	dq_checks = PythonOperator(
+	    task_id="dq_checks_log_only",
+	    python_callable=run_dq_checks_log_only,
 	)
 
-	sanity_miss_date = SnowflakeOperator(
-		task_id="sanity_miss_date",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
-        sql=f"""
-        select count(*) as num_missing_dates
-		from
-		(select f.symbol, f.datekey
-		from {TABLE_FACTPRICE} f
-		left join {TABLE_DIMDATE} d on d.datekey = f.datekey
-		where d.datekey is null);
-		"""
-	)	
 
-	sanity_miss_symbol = SnowflakeOperator(
-		task_id="sanity_miss_symbol",
-        warehouse=SNOWFLAKE_WAREHOUSE,
-        database=SNOWFLAKE_DATABASE,
-        schema=SNOWFLAKE_SCHEMA,
-        role=SNOWFLAKE_ROLE,
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
-        sql=f"""
-        select count(*) as num_missing_symbols
-		from
-		(select f.symbol, f.datekey
-		from {TABLE_FACTPRICE} f
-		left join {TABLE_DIMSYM} s on s.symbol = f.symbol
-		where s.symbol is null);
-		"""
-	)	
 
 
 
@@ -364,5 +425,5 @@ with DAG(
 	update_dimcompany >> update_dimsymbol
 	[create_dimdate, create_dimsymbol] >> create_factprice
 	[update_dimdate, update_dimsymbol] >> update_factprice
-	update_factprice >> [sanity_duplicates, sanity_miss_date, sanity_miss_symbol]
-
+	# update_factprice >> [sanity_duplicates, sanity_miss_date, sanity_miss_symbol]
+	update_factprice >> dq_checks
