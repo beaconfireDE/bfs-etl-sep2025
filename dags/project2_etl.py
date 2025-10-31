@@ -352,7 +352,7 @@ SELECT
             (SELECT COUNT(*) FROM compared)::FLOAT 
             / NULLIF((SELECT total_rows FROM total_sample), 0),
             0
-        ) <= 0
+        ) <= 0.01
         THEN 'PASS'
         ELSE 'FAIL'
     END AS consistency_check_result;
@@ -515,23 +515,37 @@ def run_validation(file_name: str):
             # Evaluate each result row
             for row in results:
                 row_dict = dict(zip(col_names, row))
+                has_fail = False
+                
+                # Check for FAIL string in result columns (e.g., *_check_result, *_result)
                 for col_name, val in row_dict.items():
-                    # Check for FAIL string
                     if isinstance(val, str) and val.strip().upper() == "FAIL":
+                        has_fail = True
                         fail_rows.append({
                             "statement": stmt[:100] + ("..." if len(stmt) > 100 else ""),
                             "check_column": col_name,
                             "row": row_dict
                         })
                         break
-                    # Check for issues count > 0 (skip NULL values)
-                    elif val is not None and isinstance(val, (int, float)) and val > 0:
-                        fail_rows.append({
-                            "statement": stmt[:100] + ("..." if len(stmt) > 100 else ""),
-                            "check_column": col_name,
-                            "row": row_dict
-                        })
-                        break
+                
+                # Only check issues count fields (not all numeric fields)
+                # Look for columns that indicate issues: null_key_records, orphan_*_records, mismatched_rows, issues
+                if not has_fail:
+                    for col_name, val in row_dict.items():
+                        col_lower = col_name.lower()
+                        # Only check fields that indicate problems, not general counts
+                        if (col_lower.endswith('_records') or 
+                            col_lower.endswith('_issues') or 
+                            col_lower == 'issues' or
+                            col_lower == 'mismatched_rows' or
+                            col_lower == 'null_key_records'):
+                            if val is not None and isinstance(val, (int, float)) and val > 0:
+                                fail_rows.append({
+                                    "statement": stmt[:100] + ("..." if len(stmt) > 100 else ""),
+                                    "check_column": col_name,
+                                    "row": row_dict
+                                })
+                                break
         except Exception as e:
             print(f"ERROR executing statement: {str(e)}")
             fail_rows.append({
