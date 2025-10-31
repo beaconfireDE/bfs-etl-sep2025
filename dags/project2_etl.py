@@ -255,7 +255,7 @@ VALUES (
     src.ADJCLOSE, src.VOLUME, CURRENT_TIMESTAMP()
 );""",
 
-    "val_post_update.sql": """-- 1 Row count validation -------------------------------------------------
+    "val_post_update.sql": """-- 1. Row count validation -------------------------------------------------
 SELECT 
     (SELECT COUNT(*) FROM fact_market_daily) AS target_count,
     (SELECT COUNT(*) 
@@ -266,7 +266,7 @@ SELECT
         ELSE 'FAIL'
     END AS rowcount_check_result;
 
--- 2 Null check on key columns --------------------------------------------
+-- 2. Null check on key columns --------------------------------------------
 SELECT 
     'NULL_CHECK' AS check_type,
     COUNT_IF(symbol IS NULL OR trade_date IS NULL) AS null_key_records,
@@ -276,7 +276,8 @@ SELECT
     END AS null_check_result
 FROM fact_market_daily;
 
--- 3 Referential integrity ------------------------------------------------
+-- 3. Referential integrity ------------------------------------------------
+-- Symbol foreign key
 SELECT 
     'FK_SYMBOL' AS check_type,
     COUNT(*) AS orphan_symbol_records,
@@ -289,6 +290,7 @@ LEFT JOIN dim_symbol s
     ON f.symbol = s.symbol
 WHERE s.symbol IS NULL;
 
+-- Company foreign key
 SELECT 
     'FK_COMPANY' AS check_type,
     COUNT(*) AS orphan_company_records,
@@ -301,11 +303,11 @@ LEFT JOIN dim_company c
     ON f.company_id = c.company_id
 WHERE c.company_id IS NULL;
 
--- 4 Compare sampling records ------------------------------------------------
+-- 4. Compare sampling records --------------------------------------------
 WITH sampled_source AS (
     SELECT *
     FROM US_STOCK_DAILY.DCCM.Stock_History
-    SAMPLE (2)  -- ← 2% random sample, adjust as needed
+    SAMPLE (2)  -- 2% random sample
 ),
 compared AS (
     SELECT 
@@ -319,15 +321,16 @@ compared AS (
       ON s.symbol_ID = f.symbol_ID
      AND TO_NUMBER(TO_CHAR(h.DATE, 'YYYYMMDD')) = f.date_ID
     WHERE
-        ABS(h.OPEN      - f.open)      > 1e-8 OR
-        ABS(h.HIGH      - f.high)      > 1e-8 OR
-        ABS(h.LOW       - f.low)       > 1e-8 OR
-        ABS(h.CLOSE     - f.close)     > 1e-8 OR
-        ABS(h.ADJCLOSE  - f.adjclose)  > 1e-8 OR
-        ABS(h.VOLUME    - f.volume)    > 1
+        ABS(h.OPEN     - f.open)     > 1e-8 OR
+        ABS(h.HIGH     - f.high)     > 1e-8 OR
+        ABS(h.LOW      - f.low)      > 1e-8 OR
+        ABS(h.CLOSE    - f.close)    > 1e-8 OR
+        ABS(h.ADJCLOSE - f.adjclose) > 1e-8 OR
+        ABS(h.VOLUME   - f.volume)   > 1
 ),
 total_sample AS (
-    SELECT COUNT(*) AS total_rows FROM sampled_source h
+    SELECT COUNT(*) AS total_rows 
+    FROM sampled_source h
     JOIN dim_symbol s ON UPPER(h.SYMBOL) = UPPER(s.symbol)
     JOIN fact_market_daily f
       ON s.symbol_ID = f.symbol_ID
@@ -342,11 +345,15 @@ SELECT
         6
     ) AS mismatch_ratio,
     CASE 
-        WHEN (SELECT COUNT(*) FROM compared)::FLOAT 
-             / NULLIF((SELECT total_rows FROM total_sample), 1) <= 0
-            THEN 'PASS'
+        WHEN COALESCE(
+            (SELECT COUNT(*) FROM compared)::FLOAT 
+            / NULLIF((SELECT total_rows FROM total_sample), 0),
+            0
+        ) <= 0
+        THEN 'PASS'
         ELSE 'FAIL'
-    END AS consistency_check_result;""",
+    END AS consistency_check_result;
+""",
 
     "validate_data_integrity.sql": """-- Data Integrity Validation Checks
 -- This query returns issues count for each validation rule
