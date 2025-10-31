@@ -203,7 +203,7 @@ VALUES (
     src.DAY_OF_WEEK, src.WEEK_OF_YEAR, src.MONTH_NAME, src.DAY_NAME, CURRENT_TIMESTAMP()
 );""",
 
-    "update_fact_market_daily .sql": """MERGE INTO fact_market_daily AS tgt
+    "update_fact_market_daily.sql": """MERGE INTO fact_market_daily AS tgt
 USING (
     SELECT 
         sym.SYMBOL_ID,
